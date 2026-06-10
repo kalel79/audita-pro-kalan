@@ -1,0 +1,68 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+  background: #F4F1EA;
+  color: #0F172A;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Safe areas iOS */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+/* Animaciones */
+.apk-fade { animation: apkFade .35s ease; }
+@keyframes apkFade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.apk-spin {
+  width: 38px; height: 38px;
+  border: 4px solid #E4E0D6;
+  border-top-color: #15803D;
+  border-radius: 50%;
+  animation: apkSpin 1s linear infinite;
+}
+@keyframes apkSpin { to { transform: rotate(360deg); } }
+
+.apk-toast { animation: apkToast .3s ease; }
+@keyframes apkToast {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.apk-card { transition: transform .2s, box-shadow .2s; }
+.apk-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 26px rgba(0,0,0,.12) !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #15803D !important;
+  box-shadow: 0 0 0 3px rgba(21,128,61,.13);
+  outline: none;
+}
+
+@media (max-width: 640px) {
+  .form-grid { grid-template-columns: 1fr !important; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+}
