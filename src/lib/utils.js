@@ -21,7 +21,6 @@ export const COLOR_CAT = {
   'Servicios de Salud': '#7A4FA0',
   'Productos y Servicios': '#C99A2E',
   'Disposición de Residuos': '#475569',
-  'Control de Tabaco': '#8B3A2E',
 };
 
 // Estados de cumplimiento según metodología Kalan
