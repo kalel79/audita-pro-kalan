@@ -12,6 +12,7 @@ export default function Auditoria() {
   const [tab, setTab] = useState('check');
   const [filtroSec, setFiltroSec] = useState(0);
   const [toast, setToast] = useState('');
+  const [editando, setEditando] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -51,6 +52,11 @@ export default function Auditoria() {
     setData({ ...data, checklist: nc });
   };
 
+  const setCampo = (campo, valor) => {
+    if (!data) return;
+    setData({ ...data, [campo]: valor });
+  };
+
   const guardar = async () => {
     if (!data) return;
     const recalc = calcCumplimiento(data.checklist || []);
@@ -87,18 +93,52 @@ export default function Auditoria() {
       <div style={S.head}>
         <div style={{ width: 5, background: cat, borderRadius: 4 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2 style={{ margin: 0, color: K.carbon, fontSize: 20, lineHeight: 1.25 }}>{data.establecimiento}</h2>
-          <div style={{ color: K.gris, fontSize: 13, marginTop: 4, lineHeight: 1.4 }}>{data.giro}</div>
-          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-            <span style={{ ...S.pill, background: cat + '1A', color: cat }}>{data.categoria}</span>
-            <span style={{ ...S.pill, background: K.azul + '12', color: K.azul }}>{data.tramite}</span>
-            <span style={{ ...S.pill, background: '#0001', color: K.gris }}>Folio {data.folio}</span>
+          {!editando ? (
+            <>
+              <h2 style={{ margin: 0, color: K.carbon, fontSize: 20, lineHeight: 1.25 }}>{data.establecimiento}</h2>
+              <div style={{ color: K.gris, fontSize: 13, marginTop: 4, lineHeight: 1.4 }}>{data.giro}</div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                <span style={{ ...S.pill, background: cat + '1A', color: cat }}>{data.categoria}</span>
+                <span style={{ ...S.pill, background: K.azul + '12', color: K.azul }}>{data.tramite}</span>
+                <span style={{ ...S.pill, background: '#0001', color: K.gris }}>Folio {data.folio}</span>
+              </div>
+              <button style={S.editBtn} onClick={() => setEditando(true)}>✎ Editar datos del establecimiento</button>
+            </>
+          ) : (
+            <div className="apk-fade">
+              <div style={S.grid2}>
+                <Field label="Nombre del establecimiento">
+                  <input style={S.input} value={data.establecimiento || ''} onChange={(e) => setCampo('establecimiento', e.target.value)} />
+                </Field>
+                <Field label="Responsable / Propietario">
+                  <input style={S.input} value={data.responsable || ''} onChange={(e) => setCampo('responsable', e.target.value)} />
+                </Field>
+                <Field label="Domicilio" full>
+                  <input style={S.input} value={data.domicilio || ''} onChange={(e) => setCampo('domicilio', e.target.value)} />
+                </Field>
+                <Field label="Auditor responsable">
+                  <input style={S.input} value={data.auditor || ''} onChange={(e) => setCampo('auditor', e.target.value)} />
+                </Field>
+                <Field label="Folio">
+                  <input style={S.input} value={data.folio || ''} onChange={(e) => setCampo('folio', e.target.value)} />
+                </Field>
+                <Field label="Fecha de visita">
+                  <input type="date" style={S.input} value={data.fecha || ''} onChange={(e) => setCampo('fecha', e.target.value)} />
+                </Field>
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                <button style={S.btnPrimary} onClick={async () => { await guardar(); setEditando(false); }}>Guardar datos</button>
+                <button style={S.btnGhost} onClick={() => setEditando(false)}>Cancelar</button>
+              </div>
+            </div>
+          )}
+        </div>
+        {!editando && (
+          <div style={{ textAlign: 'center', flexShrink: 0 }}>
+            <Donut pct={stats.pct} color={d.color} size={84} bold />
+            <div style={{ fontWeight: 800, color: d.color, fontSize: 10.5, marginTop: 6, maxWidth: 100, lineHeight: 1.2 }}>{d.label}</div>
           </div>
-        </div>
-        <div style={{ textAlign: 'center', flexShrink: 0 }}>
-          <Donut pct={stats.pct} color={d.color} size={84} bold />
-          <div style={{ fontWeight: 800, color: d.color, fontSize: 10.5, marginTop: 6, maxWidth: 100, lineHeight: 1.2 }}>{d.label}</div>
-        </div>
+        )}
       </div>
 
       <div style={S.progressWrap}>
@@ -173,6 +213,15 @@ export default function Auditoria() {
       </div>
 
       {toast && <div style={S.toast} className="apk-toast">{toast}</div>}
+    </div>
+  );
+}
+
+function Field({ label, children, full }) {
+  return (
+    <div style={{ gridColumn: full ? '1 / -1' : 'auto' }}>
+      <label style={S.lbl}>{label}</label>
+      {children}
     </div>
   );
 }
@@ -321,6 +370,9 @@ const S = {
   back: { background: 'none', border: 'none', color: K.azul, fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '4px 0', marginBottom: 14 },
   head: { display: 'flex', gap: 14, alignItems: 'stretch', background: '#fff', borderRadius: 16, padding: '16px 18px', boxShadow: '0 2px 14px rgba(0,0,0,.06)', marginBottom: 14 },
   pill: { fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' },
+  editBtn: { background: 'none', border: 'none', color: K.azulCl, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', padding: '8px 0 0' },
+  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
+  btnGhost: { background: '#fff', color: K.azul, border: `1.5px solid ${K.azul}33`, padding: '10px 18px', borderRadius: 9, fontWeight: 600, fontSize: 14, cursor: 'pointer' },
   progressWrap: { background: '#fff', borderRadius: 12, padding: '12px 16px', marginBottom: 14, boxShadow: '0 2px 10px rgba(0,0,0,.04)' },
   bar: { height: 8, background: '#E4E0D6', borderRadius: 6, overflow: 'hidden' },
   fill: { height: '100%', background: `linear-gradient(90deg, ${K.azul}, ${K.verde})`, transition: 'width .4s ease' },
