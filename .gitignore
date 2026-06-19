@@ -22,3 +22,5 @@ npm-debug.log*
 
 # Sistema
 Thumbs.db
+
+.vercel

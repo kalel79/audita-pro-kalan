@@ -6,7 +6,7 @@ import { contarPendientes } from '../lib/db';
 import { K } from '../lib/utils';
 import Logo from './Logo';
 
-export default function Header({ usuario }) {
+export default function Header({ usuario, perfil }) {
   const navigate = useNavigate();
   const [online, setOnline] = useState(navigator.onLine);
   const [pendientes, setPendientes] = useState(0);
@@ -87,6 +87,9 @@ export default function Header({ usuario }) {
             <div style={{ fontSize: 11, opacity: 0.7 }}>Sesión iniciada como</div>
             <strong>{usuario?.email}</strong>
           </div>
+          {perfil?.rol === 'admin' && (
+            <button onClick={() => navigate('/admin')} style={S.menuBtnAdmin}>Administrar usuarios</button>
+          )}
           <button onClick={cerrarSesion} style={S.menuBtn}>Cerrar sesión</button>
         </div>
       )}
@@ -134,5 +137,9 @@ const S = {
   menuBtn: {
     background: K.rojo, color: '#fff', border: 'none', padding: '10px 14px',
     borderRadius: 8, fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: 13.5,
+  },
+  menuBtnAdmin: {
+    background: K.azul, color: '#fff', border: 'none', padding: '10px 14px',
+    borderRadius: 8, fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: 13.5, marginBottom: 8,
   },
 };
