@@ -10,6 +10,7 @@ export default function Header({ usuario, perfil }) {
   const navigate = useNavigate();
   const [online, setOnline] = useState(navigator.onLine);
   const [pendientes, setPendientes] = useState(0);
+  const [usuariosPendientes, setUsuariosPendientes] = useState(0);
   const [sincronizando, setSincronizando] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
 
@@ -29,6 +30,23 @@ export default function Header({ usuario, perfil }) {
       clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (perfil?.rol !== 'admin') return;
+
+    const refreshUsuariosPendientes = async () => {
+      const { count } = await supabase
+        .from('perfiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('estado', 'pendiente');
+      setUsuariosPendientes(count || 0);
+    };
+
+    refreshUsuariosPendientes();
+    const interval = setInterval(refreshUsuariosPendientes, 60000);
+
+    return () => clearInterval(interval);
+  }, [perfil?.rol]);
 
   const sync = async () => {
     if (!online) {
@@ -75,8 +93,11 @@ export default function Header({ usuario, perfil }) {
             {pendientes > 0 && <span style={S.badge}>{pendientes}</span>}
           </button>
 
-          <button onClick={() => setMenuAbierto(!menuAbierto)} style={S.iconBtn} title="Menú">
+          <button onClick={() => setMenuAbierto(!menuAbierto)} style={{ ...S.iconBtn, position: 'relative' }} title="Menú">
             ☰
+            {perfil?.rol === 'admin' && usuariosPendientes > 0 && (
+              <span style={S.badge}>{usuariosPendientes}</span>
+            )}
           </button>
         </div>
       </div>
