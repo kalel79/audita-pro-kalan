@@ -23,7 +23,7 @@ export default function App() {
       .select('id, nombre, rol, estado')   // ← estado en lugar de aprobado
       .eq('id', session.user.id)
       .maybeSingle();
-    setPerfil(data || null);
+    setPerfil(data || { estado: 'pendiente', rol: 'cliente' });
   };
 
   useEffect(() => {
