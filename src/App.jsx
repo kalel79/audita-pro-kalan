@@ -12,15 +12,15 @@ import Reporte from './components/Reporte';
 import Admin from './components/Admin';
 
 export default function App() {
-  const [sesion, setSesion] = useState(null);
-  const [perfil, setPerfil] = useState(null);
+  const [sesion, setSesion]     = useState(null);
+  const [perfil, setPerfil]     = useState(null);
   const [cargando, setCargando] = useState(true);
 
   const cargarPerfil = async (session) => {
     if (!session) { setPerfil(null); return; }
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, rol, aprobado')
+      .select('id, nombre, rol, estado')   // ← estado en lugar de aprobado
       .eq('id', session.user.id)
       .maybeSingle();
     setPerfil(data || null);
@@ -50,6 +50,7 @@ export default function App() {
     };
   }, []);
 
+  // ── Pantalla de carga ────────────────────────────────────────────
   if (cargando) {
     return (
       <div style={S.cargando}>
@@ -59,6 +60,7 @@ export default function App() {
     );
   }
 
+  // ── Sin sesión → login ───────────────────────────────────────────
   if (!sesion) {
     return (
       <Routes>
@@ -70,24 +72,50 @@ export default function App() {
 
   const usuario = sesion.user;
 
-  if (perfil && !perfil.aprobado && perfil.rol !== 'admin') {
+  // ── Cuenta pendiente ─────────────────────────────────────────────
+  if (perfil?.estado === 'pendiente') {
     return (
       <div style={S.cargando}>
+        <div style={{ fontSize: 52, marginBottom: 16 }}>⏳</div>
         <h2 style={{ color: K.azul, marginBottom: 8 }}>Cuenta pendiente de aprobación</h2>
-        <p style={{ color: K.gris, maxWidth: 360, textAlign: 'center' }}>
-          Tu cuenta ({usuario.email}) fue creada correctamente, pero un administrador de Kalan Consulting
-          debe aprobarla antes de que puedas usar Audita Pro.
+        <p style={{ color: K.gris, maxWidth: 360, textAlign: 'center', lineHeight: 1.6 }}>
+          Tu cuenta (<strong>{usuario.email}</strong>) fue creada correctamente.
+          Un administrador de Kalan Consulting la revisará y te notificará cuando esté activa.
+        </p>
+        <p style={{ color: K.gris, fontSize: 13, marginTop: 8 }}>
+          📧 contacto@kalanconsultoria.com
         </p>
         <button
           onClick={() => supabase.auth.signOut()}
-          style={{ marginTop: 18, background: K.azul, color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}
-        >
+          style={S.btnCerrar}>
           Cerrar sesión
         </button>
       </div>
     );
   }
 
+  // ── Cuenta bloqueada ─────────────────────────────────────────────
+  if (perfil?.estado === 'bloqueado') {
+    return (
+      <div style={S.cargando}>
+        <div style={{ fontSize: 52, marginBottom: 16 }}>🚫</div>
+        <h2 style={{ color: K.rojo, marginBottom: 8 }}>Cuenta bloqueada</h2>
+        <p style={{ color: K.gris, maxWidth: 360, textAlign: 'center', lineHeight: 1.6 }}>
+          Tu cuenta ha sido desactivada. Contacta a Kalan Consulting para más información.
+        </p>
+        <p style={{ color: K.gris, fontSize: 13, marginTop: 8 }}>
+          📧 contacto@kalanconsultoria.com
+        </p>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          style={S.btnCerrar}>
+          Cerrar sesión
+        </button>
+      </div>
+    );
+  }
+
+  // ── App principal ────────────────────────────────────────────────
   return (
     <div style={S.app}>
       <Header usuario={usuario} perfil={perfil} />
@@ -97,7 +125,9 @@ export default function App() {
           <Route path="/nueva" element={<NuevaAuditoria usuario={usuario} />} />
           <Route path="/auditoria/:id" element={<Auditoria />} />
           <Route path="/reporte/:id" element={<Reporte />} />
-          {perfil?.rol === 'admin' && <Route path="/admin" element={<Admin />} />}
+          {perfil?.rol === 'admin' && (
+            <Route path="/admin" element={<Admin />} />
+          )}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
@@ -114,10 +144,22 @@ const S = {
     alignItems: 'center',
     justifyContent: 'center',
     background: K.arena,
+    padding: 24,
   },
   main: {
     maxWidth: 1100,
     margin: '0 auto',
     padding: '24px 18px 60px',
+  },
+  btnCerrar: {
+    marginTop: 20,
+    background: K.azul,
+    color: '#fff',
+    border: 'none',
+    padding: '10px 24px',
+    borderRadius: 8,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontSize: 14,
   },
 };

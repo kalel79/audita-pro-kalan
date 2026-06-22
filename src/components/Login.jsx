@@ -4,13 +4,13 @@ import { K } from '../lib/utils';
 import Logo from './Logo';
 
 export default function Login() {
-  const [modo, setModo] = useState('login'); // 'login' o 'registro'
-  const [email, setEmail] = useState('');
+  const [modo, setModo]         = useState('login');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [nombre, setNombre] = useState('');
+  const [nombre, setNombre]     = useState('');
   const [cargando, setCargando] = useState(false);
-  const [error, setError] = useState('');
-  const [mensaje, setMensaje] = useState('');
+  const [error, setError]       = useState('');
+  const [mensaje, setMensaje]   = useState('');
 
   const enviar = async (e) => {
     e.preventDefault();
@@ -27,7 +27,10 @@ export default function Login() {
           options: { data: { nombre: nombre || email.split('@')[0] } },
         });
         if (error) throw error;
-        setMensaje('Cuenta creada. Revisa tu correo para confirmar.');
+        // Mensaje claro: queda pendiente, no activo
+        setMensaje('✅ Solicitud enviada. Un administrador de Kalan Consulting revisará tu cuenta y te notificará por correo cuando esté activa.');
+        setEmail(''); setPassword(''); setNombre('');
+        setModo('login');
       }
     } catch (e) {
       setError(e.message || 'Error de autenticación');
@@ -39,12 +42,15 @@ export default function Login() {
   return (
     <div style={S.wrap}>
       <div style={S.card} className="apk-fade">
+
+        {/* Logo y título */}
         <div style={S.head}>
           <Logo size={72} />
           <h1 style={S.titulo}>AUDITA <span style={{ color: K.verdeBr }}>PRO</span></h1>
           <p style={S.sub}>Kalan Consulting · Consultoría Sanitaria</p>
         </div>
 
+        {/* Tabs — solo login visible, registro como enlace discreto */}
         <div style={S.tabs}>
           <button
             onClick={() => { setModo('login'); setError(''); setMensaje(''); }}
@@ -56,43 +62,53 @@ export default function Login() {
             onClick={() => { setModo('registro'); setError(''); setMensaje(''); }}
             style={modo === 'registro' ? S.tabActive : S.tab}
           >
-            Crear cuenta
+            Solicitar acceso
           </button>
         </div>
 
         <form onSubmit={enviar} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Campos de registro */}
           {modo === 'registro' && (
-            <div>
-              <label style={S.lbl}>Nombre completo</label>
-              <input
-                type="text"
-                style={S.input}
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Ej. Hugo Montiel Robles"
-                required
-              />
-            </div>
+            <>
+              <div style={S.aviso}>
+                📋 El acceso a Audita Pro requiere aprobación de Kalan Consulting.
+                Completa el formulario y te notificaremos por correo cuando tu cuenta esté activa.
+              </div>
+              <div>
+                <label style={S.lbl}>Nombre completo</label>
+                <input
+                  type="text"
+                  style={S.input}
+                  value={nombre}
+                  onChange={e => setNombre(e.target.value)}
+                  placeholder="Ej. Hugo Montiel Robles"
+                  required
+                />
+              </div>
+            </>
           )}
+
           <div>
             <label style={S.lbl}>Correo</label>
             <input
               type="email"
               style={S.input}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="consultor@kalanconsulting.mx"
+              onChange={e => setEmail(e.target.value)}
+              placeholder={modo === 'login' ? 'tu@correo.com' : 'tu@correo.com'}
               required
               autoComplete="email"
             />
           </div>
+
           <div>
             <label style={S.lbl}>Contraseña</label>
             <input
               type="password"
               style={S.input}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
               required
               minLength={6}
@@ -100,16 +116,23 @@ export default function Login() {
             />
           </div>
 
-          {error && <div style={S.error}>{error}</div>}
+          {error   && <div style={S.error}>{error}</div>}
           {mensaje && <div style={S.ok}>{mensaje}</div>}
 
-          <button type="submit" disabled={cargando} style={{ ...S.btn, opacity: cargando ? 0.6 : 1 }}>
-            {cargando ? 'Procesando…' : modo === 'login' ? 'Entrar' : 'Crear cuenta'}
+          <button
+            type="submit"
+            disabled={cargando}
+            style={{ ...S.btn, opacity: cargando ? 0.6 : 1 }}>
+            {cargando
+              ? 'Procesando…'
+              : modo === 'login'
+                ? 'Entrar'
+                : 'Enviar solicitud'}
           </button>
         </form>
 
         <div style={S.footer}>
-          <strong>#KalanProtege</strong> · Apizaco, Tlaxcala
+          <strong>#KalanProtege</strong> · Tlaxcala, Tlaxcala, México
         </div>
       </div>
     </div>
@@ -133,10 +156,13 @@ const S = {
     maxWidth: 420,
     boxShadow: '0 20px 60px rgba(0,0,0,.3)',
   },
-  head: { textAlign: 'center', marginBottom: 24 },
+  head:   { textAlign: 'center', marginBottom: 24 },
   titulo: { fontSize: 28, fontWeight: 800, color: K.azul, margin: '12px 0 4px', letterSpacing: 1 },
-  sub: { fontSize: 12.5, color: K.gris, margin: 0, fontWeight: 600 },
-  tabs: { display: 'flex', gap: 4, background: K.arena, padding: 4, borderRadius: 10, marginBottom: 20 },
+  sub:    { fontSize: 12.5, color: K.gris, margin: 0, fontWeight: 600 },
+  tabs: {
+    display: 'flex', gap: 4, background: K.arena,
+    padding: 4, borderRadius: 10, marginBottom: 20,
+  },
   tab: {
     flex: 1, background: 'transparent', border: 'none', padding: '9px 14px',
     borderRadius: 7, fontWeight: 600, color: K.gris, cursor: 'pointer', fontSize: 13.5,
@@ -146,10 +172,24 @@ const S = {
     borderRadius: 7, fontWeight: 700, color: K.azul, cursor: 'pointer', fontSize: 13.5,
     boxShadow: '0 1px 4px rgba(0,0,0,.08)',
   },
-  lbl: { display: 'block', fontSize: 12.5, fontWeight: 700, color: K.gris, marginBottom: 5, letterSpacing: 0.3 },
+  aviso: {
+    background: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    borderRadius: 9,
+    padding: '10px 13px',
+    fontSize: 12.5,
+    color: '#1E40AF',
+    lineHeight: 1.5,
+  },
+  lbl: {
+    display: 'block', fontSize: 12.5, fontWeight: 700,
+    color: K.gris, marginBottom: 5, letterSpacing: 0.3,
+  },
   input: {
-    width: '100%', padding: '11px 13px', borderRadius: 9, border: '1.5px solid #DDD8CC',
-    fontSize: 14.5, background: '#FCFBF8', outline: 'none', boxSizing: 'border-box', color: K.carbon,
+    width: '100%', padding: '11px 13px', borderRadius: 9,
+    border: '1.5px solid #DDD8CC', fontSize: 14.5,
+    background: '#FCFBF8', outline: 'none',
+    boxSizing: 'border-box', color: K.carbon,
   },
   btn: {
     background: `linear-gradient(120deg, ${K.verde}, ${K.verdeCl})`,
@@ -157,7 +197,7 @@ const S = {
     borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: 'pointer',
     boxShadow: '0 3px 12px rgba(21,128,61,.3)', marginTop: 6,
   },
-  error: { background: '#FEE2E2', color: '#991B1B', padding: '10px 12px', borderRadius: 8, fontSize: 13 },
-  ok: { background: '#DCFCE7', color: '#166534', padding: '10px 12px', borderRadius: 8, fontSize: 13 },
+  error:  { background: '#FEE2E2', color: '#991B1B', padding: '10px 12px', borderRadius: 8, fontSize: 13 },
+  ok:     { background: '#DCFCE7', color: '#166534', padding: '10px 12px', borderRadius: 8, fontSize: 13 },
   footer: { textAlign: 'center', fontSize: 11, color: K.gris, marginTop: 24, fontWeight: 600 },
 };
