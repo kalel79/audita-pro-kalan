@@ -44,9 +44,16 @@ export default function App() {
       if (res?.ok) console.log('Auto-sync:', res.mensaje);
     });
 
+    // Refresco periódico del perfil para detectar aprobaciones
+    const refreshInterval = setInterval(async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) await cargarPerfil(session);
+    }, 30000);
+
     return () => {
       subscription.unsubscribe();
       unsub();
+      clearInterval(refreshInterval);
     };
   }, []);
 
