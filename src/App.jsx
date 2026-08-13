@@ -18,21 +18,38 @@ export default function App() {
 
   const cargarPerfil = async (session) => {
     if (!session) { setPerfil(null); return; }
-    const { data } = await supabase
-      .from('perfiles')
-      .select('id, nombre, rol, estado')   // ← estado en lugar de aprobado
-      .eq('id', session.user.id)
-      .maybeSingle();
-    setPerfil(data || { estado: 'pendiente', rol: 'cliente' });
+    try {
+      const { data } = await supabase
+        .from('perfiles')
+        .select('id, nombre, rol, estado')   // ← estado en lugar de aprobado
+        .eq('id', session.user.id)
+        .maybeSingle();
+      setPerfil(data || { estado: 'pendiente', rol: 'cliente' });
+    } catch (e) {
+      console.error('Error cargando perfil:', e);
+      setPerfil({ estado: 'pendiente', rol: 'cliente' });
+    }
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSesion(session);
-      await cargarPerfil(session);
-      setCargando(false);
-      if (session) sincronizar();
-    });
+    // Si algo se cuelga (sesión corrupta, red lenta, etc.), no dejar
+    // al usuario atrapado en el spinner de carga para siempre.
+    const limiteCarga = setTimeout(() => setCargando(false), 8000);
+
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        setSesion(session);
+        await cargarPerfil(session);
+        if (session) sincronizar();
+      })
+      .catch((e) => {
+        console.error('Error obteniendo sesión:', e);
+        setSesion(null);
+      })
+      .finally(() => {
+        clearTimeout(limiteCarga);
+        setCargando(false);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSesion(session);
@@ -46,11 +63,16 @@ export default function App() {
 
     // Refresco periódico del perfil para detectar aprobaciones
     const refreshInterval = setInterval(async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) await cargarPerfil(session);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) await cargarPerfil(session);
+      } catch (e) {
+        console.error('Error en refresco periódico de perfil:', e);
+      }
     }, 30000);
 
     return () => {
+      clearTimeout(limiteCarga);
       subscription.unsubscribe();
       unsub();
       clearInterval(refreshInterval);
