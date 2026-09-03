@@ -1,3 +1,11 @@
+-- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+-- !! OBSOLETO - NO EJECUTAR. Rompe produccion.
+-- !! Este archivo usa la columna `aprobado`, que ya NO existe:
+-- !! la BD migro a `estado` (pendiente|activo|bloqueado) a mano,
+-- !! sin versionar. Se conserva solo como historial.
+-- !! Usar en su lugar: fix_escalada_privilegios.sql
+-- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 -- ============================================================
 --  AUDITA PRO KALAN - Aprobación manual de nuevos usuarios
 --  Ejecutar en: Supabase Dashboard > SQL Editor > New Query
