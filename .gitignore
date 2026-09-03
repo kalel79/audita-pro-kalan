@@ -24,3 +24,6 @@ npm-debug.log*
 Thumbs.db
 
 .vercel
+
+# Estado local del CLI de Supabase (incluye pooler-url)
+supabase/.temp/
