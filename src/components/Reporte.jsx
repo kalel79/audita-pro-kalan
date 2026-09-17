@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { db } from '../lib/db';
-import { K, COLOR_CAT, calcCumplimiento, dictamen } from '../lib/utils';
+import { K, COLOR_CAT, calcCumplimiento, celdaAnexo, descuadresAnexo, dictamen } from '../lib/utils';
 import Logo from './Logo';
 import Donut from './Donut';
 
@@ -46,6 +46,15 @@ export default function Reporte() {
     const out = [];
     (aud.checklist || []).forEach((s) => s.i.forEach((i) => { if (i.e === 'no') out.push({ ...i, seccion: s.s }); }));
     return out;
+  }, [aud]);
+
+  // Anexos capturados (p. ej. balance de estupefacientes). Solo se
+  // reportan los que tienen al menos un renglón.
+  const anexos = useMemo(() => {
+    if (!aud) return [];
+    return (aud.checklist || [])
+      .map((s) => s.anexo)
+      .filter((a) => a && Array.isArray(a.filas) && a.filas.length > 0);
   }, [aud]);
 
   if (!aud || !d) return <div style={{ padding: 40, textAlign: 'center' }}><div className="apk-spin" /></div>;
@@ -104,6 +113,28 @@ export default function Reporte() {
             <td style="padding:9px 10px;border-bottom:1px solid #F0EDE4;font-size:11.5px;color:${K.azul};font-style:italic;">${escapeHtml(i.f || '—')}</td>
           </tr>`;
         }).join('')}</tbody></table>`;
+
+    const anexosHTML = anexos.map((a) => {
+      const desc = descuadresAnexo(a);
+      const metaTxt = (a.meta || [])
+        .map((m) => a[m.k] ? `${m.l}: <strong>${escapeHtml(a[m.k])}</strong>` : null)
+        .filter(Boolean).join(' &nbsp;·&nbsp; ');
+      return `<div style="margin-top:22px;">
+        <div style="font-weight:800;color:${K.azul};font-size:15px;margin-bottom:6px;padding-bottom:6px;border-bottom:2px solid ${K.verde};">📎 ${escapeHtml(a.tit)}</div>
+        ${metaTxt ? `<div style="font-size:12px;color:${K.gris};margin-bottom:8px;">${metaTxt}</div>` : ''}
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+          <thead><tr>${a.cols.map((c) => `<th style="text-align:${c.n ? 'center' : 'left'};padding:8px 7px;background:${K.arena};color:${K.azul};font-weight:700;font-size:10px;line-height:1.25;">${escapeHtml(c.l)}</th>`).join('')}</tr></thead>
+          <tbody>${a.filas.map((f) => `<tr>${a.cols.map((c) => {
+            const v = celdaAnexo(c, f);
+            const malo = c.calc && v !== '' && Number(v) !== 0;
+            return `<td style="padding:8px 7px;border-bottom:1px solid #F0EDE4;text-align:${c.n ? 'center' : 'left'};${c.calc ? `font-weight:800;color:${malo ? K.rojo : K.verde};` : ''}">${escapeHtml(v === '' || v == null ? '—' : v)}</td>`;
+          }).join('')}</tr>`).join('')}</tbody>
+        </table>
+        ${desc.length > 0
+          ? `<div style="margin-top:8px;font-size:12px;color:${K.rojo};font-weight:700;">⚠ ${desc.length} clave(s) con diferencia entre el saldo del libro de control y la existencia física.</div>`
+          : `<div style="margin-top:8px;font-size:12px;color:${K.verde};font-weight:700;">✓ Sin diferencias entre el saldo del libro de control y la existencia física.</div>`}
+      </div>`;
+    }).join('');
 
     const hallazgosHTML = hallazgos.length === 0 ? '' : `<div style="margin-top:22px;">
       <div style="font-weight:800;color:${K.azul};font-size:15px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid ${K.verde};">📸 Hallazgos documentados</div>
@@ -178,6 +209,8 @@ export default function Reporte() {
     <div style="font-weight:800;color:${K.azul};font-size:15px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid ${K.verde};">⚠ No conformidades detectadas</div>
     ${tablaNoConf}
   </div>
+
+  ${anexosHTML}
 
   ${hallazgosHTML}
 
@@ -336,6 +369,50 @@ export default function Reporte() {
             </table>
           )}
         </div>
+
+        {anexos.map((a, ax) => {
+          const desc = descuadresAnexo(a);
+          const metaTxt = (a.meta || []).filter((m) => a[m.k]).map((m) => `${m.l}: ${a[m.k]}`).join('  ·  ');
+          return (
+            <div key={ax} style={{ marginTop: 22 }}>
+              <SecTit>📎 {a.tit}</SecTit>
+              {metaTxt && <div style={{ fontSize: 12, color: K.gris, marginBottom: 8 }}>{metaTxt}</div>}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={S.table}>
+                  <thead><tr>
+                    {a.cols.map((c) => (
+                      <th key={c.k} style={{ ...S.th, textAlign: c.n ? 'center' : 'left' }}>{c.l}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {a.filas.map((f, fx) => (
+                      <tr key={f._id || fx}>
+                        {a.cols.map((c) => {
+                          const v = celdaAnexo(c, f);
+                          const malo = c.calc && v !== '' && Number(v) !== 0;
+                          return (
+                            <td key={c.k} style={{
+                              ...S.td,
+                              textAlign: c.n ? 'center' : 'left',
+                              ...(c.calc ? { fontWeight: 800, color: malo ? K.rojo : K.verde } : {}),
+                            }}>
+                              {v === '' || v == null ? '—' : v}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: desc.length ? K.rojo : K.verde }}>
+                {desc.length
+                  ? `⚠ ${desc.length} clave(s) con diferencia entre el saldo del libro de control y la existencia física.`
+                  : '✓ Sin diferencias entre el saldo del libro de control y la existencia física.'}
+              </div>
+            </div>
+          );
+        })}
 
         {hallazgos.length > 0 && (
           <div style={{ marginTop: 22 }}>

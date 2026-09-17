@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { db, guardarAuditoria, guardarHallazgo, eliminarHallazgo } from '../lib/db';
-import { K, COLOR_CAT, ESTADOS, calcCumplimiento, dictamen, fileADataURL, uuid } from '../lib/utils';
+import { K, COLOR_CAT, ESTADOS, calcCumplimiento, celdaAnexo, descuadresAnexo, dictamen, fileADataURL, uuid } from '../lib/utils';
 import Donut from './Donut';
 
 export default function Auditoria() {
@@ -49,6 +49,14 @@ export default function Auditoria() {
   const setObs = (si, ii, obs) => {
     if (!data) return;
     const nc = data.checklist.map((s, x) => x !== si ? s : { ...s, i: s.i.map((it, y) => y !== ii ? it : { ...it, o: obs }) });
+    setData({ ...data, checklist: nc });
+  };
+
+  // El anexo vive dentro de la propia sección del checklist, así viaja
+  // con la auditoría sin tocar el esquema de la base de datos.
+  const setAnexo = (si, anexo) => {
+    if (!data) return;
+    const nc = data.checklist.map((s, x) => x !== si ? s : { ...s, anexo });
     setData({ ...data, checklist: nc });
   };
 
@@ -178,6 +186,7 @@ export default function Auditoria() {
               {sec.i.map((it, ii) => (
                 <Row key={it.id} item={it} onEstado={(e) => setEstado(si, ii, e)} onObs={(o) => setObs(si, ii, o)} />
               ))}
+              {sec.anexo && <Anexo anexo={sec.anexo} onChange={(a) => setAnexo(si, a)} />}
             </div>
           ))}
         </div>
@@ -222,6 +231,112 @@ function Field({ label, children, full }) {
     <div style={{ gridColumn: full ? '1 / -1' : 'auto' }}>
       <label style={S.lbl}>{label}</label>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Anexo tabular de la sección (hoy: balance de estupefacientes y psicotrópicos).
+ * Es un instrumento de evaluación de Kalan, no un acto de autoridad: por eso
+ * sus encabezados no replican folios de acta ni de orden de visita.
+ */
+function Anexo({ anexo, onChange }) {
+  const filas = anexo.filas || [];
+  const meta = anexo.meta || [];
+  const descuadres = descuadresAnexo(anexo);
+
+  const setMeta = (k, v) => onChange({ ...anexo, [k]: v });
+  const setCelda = (fi, k, v) =>
+    onChange({ ...anexo, filas: filas.map((f, x) => x !== fi ? f : { ...f, [k]: v }) });
+  const agregar = () => onChange({ ...anexo, filas: [...filas, { _id: uuid() }] });
+  const quitar = (fi) => onChange({ ...anexo, filas: filas.filter((_, x) => x !== fi) });
+
+  return (
+    <div style={S.anexo}>
+      <div style={S.anexoHead}>
+        <span>📎 {anexo.tit}</span>
+        <span style={{ fontSize: 12, opacity: 0.85, fontWeight: 500 }}>
+          {filas.length} {filas.length === 1 ? 'clave' : 'claves'}
+        </span>
+      </div>
+
+      {anexo.nota && <div style={S.anexoNota}>{anexo.nota}</div>}
+
+      {meta.length > 0 && (
+        <div style={S.anexoMeta}>
+          {meta.map((m) => (
+            <div key={m.k}>
+              <label style={S.lbl}>{m.l}</label>
+              <input
+                style={S.input}
+                type={m.tipo === 'date' ? 'date' : 'text'}
+                value={anexo[m.k] || ''}
+                onChange={(e) => setMeta(m.k, e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {filas.length === 0 ? (
+        <div style={S.anexoVacio}>
+          Sin claves capturadas. Agrega las que se cotejaron contra el libro de control.
+        </div>
+      ) : (
+        <div style={S.anexoScroll}>
+          <table style={S.anexoTabla}>
+            <thead>
+              <tr>
+                {anexo.cols.map((c) => (
+                  <th key={c.k} style={{ ...S.anexoTh, minWidth: c.w }}>{c.l}</th>
+                ))}
+                <th style={{ ...S.anexoTh, minWidth: 40 }} aria-label="Quitar" />
+              </tr>
+            </thead>
+            <tbody>
+              {filas.map((f, fi) => {
+                const desc = descuadres.includes(f);
+                return (
+                  <tr key={f._id || fi} style={desc ? { background: K.rojo + '0D' } : undefined}>
+                    {anexo.cols.map((c) => (
+                      <td key={c.k} style={S.anexoTd}>
+                        {c.calc ? (
+                          <div style={{
+                            ...S.anexoCalc,
+                            color: celdaAnexo(c, f) === '' ? K.gris : Number(celdaAnexo(c, f)) === 0 ? K.verde : K.rojo,
+                          }}>
+                            {celdaAnexo(c, f) === '' ? '—' : celdaAnexo(c, f)}
+                          </div>
+                        ) : (
+                          <input
+                            style={{ ...S.input, padding: '7px 9px', fontSize: 13 }}
+                            type={c.n ? 'number' : 'text'}
+                            inputMode={c.n ? 'decimal' : undefined}
+                            value={f[c.k] || ''}
+                            onChange={(e) => setCelda(fi, c.k, e.target.value)}
+                          />
+                        )}
+                      </td>
+                    ))}
+                    <td style={S.anexoTd}>
+                      <button style={S.anexoDel} onClick={() => quitar(fi)} title="Quitar renglón">✕</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={S.anexoPie}>
+        <button style={S.anexoAdd} onClick={agregar}>+ Agregar clave</button>
+        {descuadres.length > 0 && (
+          <span style={{ fontSize: 12.5, color: K.rojo, fontWeight: 700 }}>
+            ⚠ {descuadres.length} clave(s) con diferencia entre libro y existencia física
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -384,6 +499,19 @@ const S = {
   secNavBtn: { background: 'transparent', border: '1px solid #E4E0D6', color: K.gris, padding: '6px 12px', borderRadius: 8, fontSize: 12.5, cursor: 'pointer', fontWeight: 600 },
   secNavActive: { background: K.verde, border: `1px solid ${K.verde}`, color: '#fff', padding: '6px 12px', borderRadius: 8, fontSize: 12.5, cursor: 'pointer', fontWeight: 700 },
   sec: { background: '#fff', borderRadius: 14, marginBottom: 14, overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,.04)' },
+  anexo: { borderTop: `3px solid ${K.azul}`, background: K.arena },
+  anexoHead: { padding: '10px 16px', fontWeight: 700, fontSize: 13.5, color: K.azul, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  anexoNota: { padding: '0 16px 12px', fontSize: 12, color: K.gris, lineHeight: 1.5 },
+  anexoMeta: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, padding: '0 16px 14px' },
+  anexoVacio: { padding: '0 16px 14px', fontSize: 12.5, color: K.gris, fontStyle: 'italic' },
+  anexoScroll: { overflowX: 'auto', padding: '0 16px', WebkitOverflowScrolling: 'touch' },
+  anexoTabla: { borderCollapse: 'separate', borderSpacing: '0 6px', fontSize: 12.5, width: '100%' },
+  anexoTh: { textAlign: 'left', fontSize: 10.5, fontWeight: 800, color: K.azul, letterSpacing: 0.3, padding: '0 6px 2px', whiteSpace: 'normal', verticalAlign: 'bottom', lineHeight: 1.25 },
+  anexoTd: { padding: '0 3px', verticalAlign: 'middle' },
+  anexoCalc: { padding: '7px 9px', borderRadius: 9, border: '1.5px dashed #DDD8CC', background: '#fff', fontWeight: 800, fontSize: 13, textAlign: 'center' },
+  anexoDel: { background: 'none', border: 'none', color: K.rojo, fontSize: 14, cursor: 'pointer', padding: '6px 4px', fontWeight: 700, lineHeight: 1 },
+  anexoPie: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 16px 16px' },
+  anexoAdd: { background: '#fff', border: `1.5px solid ${K.azul}`, color: K.azul, padding: '8px 16px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer' },
   secHead: { background: K.azul, color: '#fff', padding: '10px 16px', fontWeight: 700, fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   row: { display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 16px', borderBottom: '1px solid #F0EDE4', flexWrap: 'wrap' },
   peso: { fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 5, letterSpacing: 0.5, flexShrink: 0, marginTop: 1 },

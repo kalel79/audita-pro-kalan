@@ -114,3 +114,28 @@ export function uuid() {
     return v.toString(16);
   });
 }
+
+/**
+ * Valor de una celda del anexo. Las columnas con `calc` (p. ej. "exi-sdo")
+ * se derivan de otras dos; si a alguna le falta el dato, la celda va vacía.
+ */
+export function celdaAnexo(col, fila) {
+  if (!col || !col.calc) return fila ? fila[col.k] : '';
+  const [a, b] = col.calc.split('-');
+  const va = parseFloat(fila[a]);
+  const vb = parseFloat(fila[b]);
+  if (!Number.isFinite(va) || !Number.isFinite(vb)) return '';
+  return Math.round((va - vb) * 1000) / 1000;
+}
+
+/**
+ * Filas del anexo con descuadre (diferencia distinta de cero).
+ */
+export function descuadresAnexo(anexo) {
+  if (!anexo || !Array.isArray(anexo.filas)) return [];
+  const calc = (anexo.cols || []).filter((c) => c.calc);
+  return anexo.filas.filter((f) => calc.some((c) => {
+    const v = celdaAnexo(c, f);
+    return v !== '' && Number(v) !== 0;
+  }));
+}
