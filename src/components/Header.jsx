@@ -1,10 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { sincronizar } from '../lib/sync';
+import { sincronizar, alSincronizar } from '../lib/sync';
 import { contarPendientes } from '../lib/db';
 import { K } from '../lib/utils';
 import Logo from './Logo';
+
+// Errores del último sync, incluido el automático. Un sync sin conexión no
+// cuenta como problema: es el funcionamiento normal en campo.
+function problemasDe(res) {
+  if (!res || res.sinConexion) return [];
+  if (!res.ok) return [res.mensaje, ...(res.errores || [])];
+  return res.errores || [];
+}
+
+function textoResultado(res) {
+  const partes = [];
+  const problemas = problemasDe(res);
+  if (problemas.length) {
+    partes.push(`No se pudo sincronizar todo. Tus cambios siguen guardados en este dispositivo y se reintentarán:\n\n- ${problemas.join('\n- ')}`);
+  }
+  if (res.combinadas?.length) {
+    partes.push(`Se combinaron cambios hechos en otro dispositivo en: ${res.combinadas.join(', ')}. Revisa que la información esté completa.`);
+  }
+  return partes.join('\n\n');
+}
 
 export default function Header({ usuario, perfil }) {
   const navigate = useNavigate();
@@ -13,6 +33,10 @@ export default function Header({ usuario, perfil }) {
   const [usuariosPendientes, setUsuariosPendientes] = useState(0);
   const [sincronizando, setSincronizando] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [ultimoSync, setUltimoSync] = useState(null);
+
+  useEffect(() => alSincronizar(setUltimoSync), []);
+  const problemas = problemasDe(ultimoSync);
 
   useEffect(() => {
     const goOnline = () => setOnline(true);
@@ -57,7 +81,8 @@ export default function Header({ usuario, perfil }) {
     const res = await sincronizar();
     setSincronizando(false);
     setPendientes(await contarPendientes());
-    if (!res.ok) alert('Error: ' + res.mensaje);
+    const texto = textoResultado(res);
+    if (texto) alert(texto);
   };
 
   const cerrarSesion = async () => {
@@ -87,10 +112,13 @@ export default function Header({ usuario, perfil }) {
             onClick={sync}
             disabled={sincronizando}
             style={{ ...S.iconBtn, position: 'relative' }}
-            title={`Sincronizar (${pendientes} pendientes)`}
+            title={problemas.length
+              ? `El último sync tuvo errores:\n${problemas.join('\n')}`
+              : `Sincronizar (${pendientes} pendientes)`}
           >
             <span style={{ display: 'inline-block', animation: sincronizando ? 'apkSpin 1s linear infinite' : 'none' }}>⟳</span>
             {pendientes > 0 && <span style={S.badge}>{pendientes}</span>}
+            {problemas.length > 0 && <span style={S.alertaSync}>!</span>}
           </button>
 
           <button onClick={() => setMenuAbierto(!menuAbierto)} style={{ ...S.iconBtn, position: 'relative' }} title="Menú">
@@ -148,6 +176,11 @@ const S = {
     position: 'absolute', top: -4, right: -4, background: '#EF4444', color: '#fff',
     fontSize: 10, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9,
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
+  },
+  alertaSync: {
+    position: 'absolute', bottom: -4, left: -4, background: '#F59E0B', color: '#fff',
+    fontSize: 11, fontWeight: 800, width: 18, height: 18, borderRadius: 9,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff',
   },
   menu: {
     position: 'absolute', top: '100%', right: 18, background: '#fff', color: K.carbon,

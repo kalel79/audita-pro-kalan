@@ -1,4 +1,5 @@
 import Dexie from 'dexie';
+import { mismaVersion } from './fusion';
 
 /**
  * Base de datos local (IndexedDB) para que la app funcione SIN internet.
@@ -90,21 +91,57 @@ export async function contarPendientes() {
   return audSucias + halSucios + eliminaciones;
 }
 
-export async function marcarSincronizada(tipo, id) {
-  if (tipo === 'auditoria') {
+/**
+ * Confirma que una auditoría llegó al servidor.
+ *
+ * `selloSubido` es el actualizada_en local de la copia que se subió. Si mientras
+ * subía se guardó otro cambio en este dispositivo, el sello ya no coincide y la
+ * auditoría sigue pendiente para que el siguiente sync la suba.
+ *
+ * `fusionada` es la copia combinada cuando hubo conflicto con el servidor: se
+ * escribe localmente para que este dispositivo también tenga lo del otro.
+ */
+export async function confirmarAuditoriaSubida(id, selloSubido, versionServidor, fusionada = null) {
+  await db.transaction('rw', db.auditorias, async () => {
     const a = await db.auditorias.get(id);
-    if (a) {
-      a.dirty = false;
-      a.sincronizada_en = new Date().toISOString();
-      await db.auditorias.put(a);
+    if (!a) return;
+    if (a.actualizada_en !== selloSubido) {
+      // Hay cambios locales más nuevos que lo subido. Si lo subido era una
+      // fusión, no se adelanta la versión: así el próximo sync vuelve a
+      // combinar en lugar de pisar lo que trajo el otro dispositivo.
+      if (!fusionada) {
+        a.version_servidor = versionServidor;
+        await db.auditorias.put(a);
+      }
+      return;
     }
-  } else if (tipo === 'hallazgo') {
-    const h = await db.hallazgos.get(id);
-    if (h) {
-      h.dirty = false;
-      await db.hallazgos.put(h);
-    }
-  }
+    const base = fusionada ? { ...fusionada, actualizada_en: versionServidor } : a;
+    await db.auditorias.put({
+      ...base,
+      dirty: false,
+      version_servidor: versionServidor,
+      sincronizada_en: new Date().toISOString(),
+    });
+  });
+}
+
+/**
+ * Guarda una descarga del servidor sólo si este dispositivo no tiene cambios
+ * sin subir. La lectura y la escritura van en una sola transacción para que
+ * un autoguardado que ocurra en medio no quede pisado.
+ */
+export async function aplicarDescarga(remota) {
+  return await db.transaction('rw', db.auditorias, async () => {
+    const local = await db.auditorias.get(remota.id);
+    if (local && (local.dirty || mismaVersion(local.version_servidor, remota.actualizada_en))) return false;
+    await db.auditorias.put({
+      ...remota,
+      dirty: false,
+      version_servidor: remota.actualizada_en,
+      sincronizada_en: new Date().toISOString(),
+    });
+    return true;
+  });
 }
 
 export async function limpiarTodo() {

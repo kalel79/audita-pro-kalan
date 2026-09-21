@@ -1,8 +1,42 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { db, guardarAuditoria, guardarHallazgo, eliminarHallazgo } from '../lib/db';
+import { fusionarAuditoria } from '../lib/fusion';
 import { K, COLOR_CAT, ESTADOS, calcCumplimiento, celdaAnexo, descuadresAnexo, dictamen, fileADataURL, uuid } from '../lib/utils';
 import Donut from './Donut';
+
+// Espera tras el último cambio antes de escribir al disco. Además se escribe
+// de inmediato cuando la app pasa a segundo plano, porque en tablets Huawei
+// el sistema cierra las pestañas de fondo sin aviso.
+const AUTOGUARDADO_MS = 700;
+
+/**
+ * Escribe en IndexedDB lo que la pantalla tiene en memoria.
+ *
+ * `selloEsperado` es el actualizada_en de la versión en la que se basa la
+ * pantalla. Si la copia guardada ya no lo tiene, un sync la reemplazó mientras
+ * la pantalla estaba abierta; en ese caso se combina en vez de pisarla.
+ * Los datos de sincronización se toman siempre de la copia guardada.
+ */
+async function persistirAuditoria(actual, selloEsperado) {
+  return await db.transaction('rw', db.auditorias, async () => {
+    const guardada = await db.auditorias.get(actual.id);
+    const cambioExterno = !!guardada && guardada.actualizada_en !== selloEsperado;
+    const base = cambioExterno ? fusionarAuditoria(actual, guardada) : actual;
+    const r = calcCumplimiento(base.checklist || []);
+    const audAct = {
+      ...base,
+      version_servidor: guardada?.version_servidor,
+      sincronizada_en: guardada?.sincronizada_en,
+      pct_cumplimiento: r.pct,
+      total_criterios: r.total,
+      criticos_fallidos: r.criticosFallidos,
+      dictamen_label: dictamen(r.pct, r.criticosFallidos, r.total).label,
+    };
+    await guardarAuditoria(audAct);
+    return { audAct, combinada: cambioExterno };
+  });
+}
 
 export default function Auditoria() {
   const { id } = useParams();
@@ -13,16 +47,65 @@ export default function Auditoria() {
   const [filtroSec, setFiltroSec] = useState(0);
   const [toast, setToast] = useState('');
   const [editando, setEditando] = useState(false);
+  const [estadoGuardado, setEstadoGuardado] = useState('guardado'); // guardado | pendiente | guardando | error
+
+  // Los cambios viven en refs además del estado para que el guardado de
+  // salida (segundo plano, cierre, desmontaje) siempre vea lo más reciente.
+  const dataRef = useRef(null);
+  const selloRef = useRef(null);
+  const cambiosRef = useRef(false);
+  const timerRef = useRef(null);
+  const montadoRef = useRef(true);
 
   useEffect(() => {
     (async () => {
       const aud = await db.auditorias.get(id);
       if (!aud) { navigate('/'); return; }
+      dataRef.current = aud;
+      selloRef.current = aud.actualizada_en;
       setData(aud);
       const hs = await db.hallazgos.where('auditoria_id').equals(id).toArray();
       setHallazgos(hs);
     })();
   }, [id, navigate]);
+
+  const vaciar = useCallback(async () => {
+    clearTimeout(timerRef.current);
+    if (!cambiosRef.current || !dataRef.current) return true;
+    cambiosRef.current = false;
+    const enviada = dataRef.current;
+    if (montadoRef.current) setEstadoGuardado('guardando');
+    try {
+      const { audAct, combinada } = await persistirAuditoria(enviada, selloRef.current);
+      selloRef.current = audAct.actualizada_en;
+      // Si lo guardado trae datos de otra versión y no hubo cambios mientras
+      // se escribía, la pantalla los muestra.
+      if (combinada && dataRef.current === enviada) {
+        dataRef.current = audAct;
+        if (montadoRef.current) setData(audAct);
+      }
+      if (montadoRef.current) setEstadoGuardado(cambiosRef.current ? 'pendiente' : 'guardado');
+      return true;
+    } catch (e) {
+      console.error('No se pudo guardar la auditoría:', e);
+      cambiosRef.current = true;
+      if (montadoRef.current) setEstadoGuardado('error');
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    montadoRef.current = true;
+    const alOcultar = () => { if (document.visibilityState === 'hidden') vaciar(); };
+    document.addEventListener('visibilitychange', alOcultar);
+    window.addEventListener('pagehide', vaciar);
+    return () => {
+      document.removeEventListener('visibilitychange', alOcultar);
+      window.removeEventListener('pagehide', vaciar);
+      montadoRef.current = false;
+      vaciar();
+    };
+  }, [vaciar]);
 
   // TODOS los hooks deben ejecutarse SIEMPRE en el mismo orden,
   // antes de cualquier return condicional. Por eso useMemo va aquí.
@@ -40,45 +123,42 @@ export default function Auditoria() {
   // Helpers (no son hooks)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2200); };
 
-  const setEstado = (si, ii, estado) => {
-    if (!data) return;
-    const nc = data.checklist.map((s, x) => x !== si ? s : { ...s, i: s.i.map((it, y) => y !== ii ? it : { ...it, e: estado }) });
-    setData({ ...data, checklist: nc });
+  // Todo cambio pasa por aquí: actualiza la pantalla y programa el guardado.
+  const actualizar = (cambio) => {
+    if (!dataRef.current) return;
+    const nuevo = cambio(dataRef.current);
+    dataRef.current = nuevo;
+    cambiosRef.current = true;
+    setData(nuevo);
+    setEstadoGuardado('pendiente');
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(vaciar, AUTOGUARDADO_MS);
   };
 
-  const setObs = (si, ii, obs) => {
-    if (!data) return;
-    const nc = data.checklist.map((s, x) => x !== si ? s : { ...s, i: s.i.map((it, y) => y !== ii ? it : { ...it, o: obs }) });
-    setData({ ...data, checklist: nc });
-  };
+  const setEstado = (si, ii, estado) => actualizar((d) => ({
+    ...d,
+    checklist: d.checklist.map((s, x) => x !== si ? s : { ...s, i: s.i.map((it, y) => y !== ii ? it : { ...it, e: estado }) }),
+  }));
+
+  const setObs = (si, ii, obs) => actualizar((d) => ({
+    ...d,
+    checklist: d.checklist.map((s, x) => x !== si ? s : { ...s, i: s.i.map((it, y) => y !== ii ? it : { ...it, o: obs }) }),
+  }));
 
   // El anexo vive dentro de la propia sección del checklist, así viaja
   // con la auditoría sin tocar el esquema de la base de datos.
-  const setAnexo = (si, anexo) => {
-    if (!data) return;
-    const nc = data.checklist.map((s, x) => x !== si ? s : { ...s, anexo });
-    setData({ ...data, checklist: nc });
-  };
+  const setAnexo = (si, anexo) => actualizar((d) => ({
+    ...d,
+    checklist: d.checklist.map((s, x) => x !== si ? s : { ...s, anexo }),
+  }));
 
-  const setCampo = (campo, valor) => {
-    if (!data) return;
-    setData({ ...data, [campo]: valor });
-  };
+  const setCampo = (campo, valor) => actualizar((d) => ({ ...d, [campo]: valor }));
 
+  // Los botones de guardar escriben ya, sin esperar al autoguardado.
   const guardar = async () => {
-    if (!data) return;
-    const recalc = calcCumplimiento(data.checklist || []);
-    const dd = dictamen(recalc.pct, recalc.criticosFallidos, recalc.total);
-    const audAct = {
-      ...data,
-      pct_cumplimiento: recalc.pct,
-      total_criterios: recalc.total,
-      criticos_fallidos: recalc.criticosFallidos,
-      dictamen_label: dd.label,
-    };
-    await guardarAuditoria(audAct);
-    setData(audAct);
-    showToast('Guardado ✓');
+    const ok = await vaciar();
+    showToast(ok ? 'Guardado ✓' : '⚠ No se pudo guardar');
+    return ok;
   };
 
   // Ahora sí, el return condicional puede ir aquí porque ya
@@ -96,7 +176,10 @@ export default function Auditoria() {
 
   return (
     <div className="apk-fade">
-      <button style={S.back} onClick={async () => { await guardar(); navigate('/'); }}>← Guardar y volver</button>
+      <div style={S.topBar}>
+        <button style={S.back} onClick={async () => { if (await guardar()) navigate('/'); }}>← Guardar y volver</button>
+        <EstadoGuardado estado={estadoGuardado} onReintentar={guardar} />
+      </div>
 
       <div style={S.head}>
         <div style={{ width: 5, background: cat, borderRadius: 4 }} />
@@ -135,7 +218,7 @@ export default function Auditoria() {
                 </Field>
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                <button style={S.btnPrimary} onClick={async () => { await guardar(); setEditando(false); }}>Guardar datos</button>
+                <button style={S.btnPrimary} onClick={async () => { if (await guardar()) setEditando(false); }}>Guardar datos</button>
                 <button style={S.btnGhost} onClick={() => setEditando(false)}>Cancelar</button>
               </div>
             </div>
@@ -210,12 +293,12 @@ export default function Auditoria() {
 
       <div style={S.actions}>
         <button style={S.btnPrimary} onClick={guardar}>Guardar cambios</button>
-        <button style={S.btnSec} onClick={async () => { await guardar(); navigate(`/reporte/${id}`); }}>Ver dictamen →</button>
+        <button style={S.btnSec} onClick={async () => { if (await guardar()) navigate(`/reporte/${id}`); }}>Ver dictamen →</button>
         <label style={S.closeChk}>
           <input
             type="checkbox"
             checked={!!data.cerrada}
-            onChange={(e) => setData({ ...data, cerrada: e.target.checked })}
+            onChange={(e) => { const cerrada = e.target.checked; actualizar((d) => ({ ...d, cerrada })); }}
           />
           Marcar como cerrada
         </label>
@@ -224,6 +307,20 @@ export default function Auditoria() {
       {toast && <div style={S.toast} className="apk-toast">{toast}</div>}
     </div>
   );
+}
+
+function EstadoGuardado({ estado, onReintentar }) {
+  if (estado === 'error') {
+    return (
+      <button style={{ ...S.guardadoTag, color: K.rojo, borderColor: K.rojo + '55', cursor: 'pointer' }} onClick={onReintentar}>
+        ⚠ No se pudo guardar · Reintentar
+      </button>
+    );
+  }
+  if (estado === 'guardado') {
+    return <span style={{ ...S.guardadoTag, color: K.verde }}>✓ Guardado en este dispositivo</span>;
+  }
+  return <span style={{ ...S.guardadoTag, color: K.gris }}>Guardando…</span>;
 }
 
 function Field({ label, children, full }) {
@@ -482,7 +579,9 @@ function Hallazgos({ hallazgos, auditoriaId, onAdd, onDel }) {
 }
 
 const S = {
-  back: { background: 'none', border: 'none', color: K.azul, fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '4px 0', marginBottom: 14 },
+  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 },
+  back: { background: 'none', border: 'none', color: K.azul, fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '4px 0' },
+  guardadoTag: { fontSize: 12, fontWeight: 700, background: '#fff', border: '1px solid #E4E0D6', borderRadius: 20, padding: '4px 11px' },
   head: { display: 'flex', gap: 14, alignItems: 'stretch', background: '#fff', borderRadius: 16, padding: '16px 18px', boxShadow: '0 2px 14px rgba(0,0,0,.06)', marginBottom: 14 },
   pill: { fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' },
   editBtn: { background: 'none', border: 'none', color: K.azulCl, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', padding: '8px 0 0' },
