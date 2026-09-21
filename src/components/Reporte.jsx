@@ -4,6 +4,7 @@ import { db } from '../lib/db';
 import { asegurarFotoLocal } from '../lib/fotos';
 import { PLAZOS, cargarCatalogo, cargarAjustes, guardarAjustes, filasCorrectivas } from '../lib/dictamen';
 import Resumen from './Resumen';
+import { registrarGuardadoPendiente } from '../lib/actualizacion';
 import { K, COLOR_CAT, calcCumplimiento, celdaAnexo, descuadresAnexo, dictamen } from '../lib/utils';
 import Logo from './Logo';
 import Donut from './Donut';
@@ -46,20 +47,26 @@ export default function Reporte({ perfil }) {
 
   const guardarYa = async () => {
     clearTimeout(timerRef.current);
-    if (!pendienteRef.current) return;
+    if (!pendienteRef.current) return true;
     pendienteRef.current = false;
     try {
       await guardarAjustes(id, ajustesRef.current);
       if (!pendienteRef.current) setGuardado('ok');
+      return true;
     } catch (e) {
       console.error('No se pudo guardar el dictamen:', e);
       pendienteRef.current = true;
       setGuardado('error');
+      return false;
     }
   };
 
-  // Al salir de la pantalla se guarda lo que falte.
-  useEffect(() => () => { guardarYa(); }, []);
+  // Al salir de la pantalla, o antes de aplicar una versión nueva de la app,
+  // se guarda lo que falte.
+  useEffect(() => {
+    const quitar = registrarGuardadoPendiente(guardarYa);
+    return () => { quitar(); guardarYa(); };
+  }, []);
 
   const editar = (itemId, campo, valor) => {
     const nuevo = { ...ajustesRef.current, [itemId]: { ...ajustesRef.current[itemId], [campo]: valor } };

@@ -4,6 +4,7 @@ import { db, guardarAuditoria, guardarHallazgo, eliminarHallazgo } from '../lib/
 import { fusionarAuditoria } from '../lib/fusion';
 import { K, COLOR_CAT, ESTADOS, calcCumplimiento, celdaAnexo, descuadresAnexo, dictamen, fileADataURL, uuid } from '../lib/utils';
 import { comprimirImagen } from '../lib/fotos';
+import { registrarGuardadoPendiente } from '../lib/actualizacion';
 import Donut from './Donut';
 import FotoHallazgo from './FotoHallazgo';
 
@@ -96,6 +97,9 @@ export default function Auditoria({ perfil }) {
       return false;
     }
   }, []);
+
+  // Antes de aplicar una versión nueva de la app se guarda lo que haya en pantalla.
+  useEffect(() => registrarGuardadoPendiente(vaciar), [vaciar]);
 
   useEffect(() => {
     montadoRef.current = true;

@@ -7,7 +7,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': la versión nueva espera y la app ofrece aplicarla después de
+      // guardar lo abierto. Con 'autoUpdate' el dispositivo seguía con la
+      // versión vieja hasta cerrar la app varias veces.
+      registerType: 'prompt',
       includeAssets: ['favicon-32.png', 'apple-touch-icon.png', 'logo-kalan.png'],
       manifest: {
         name: 'Audita Pro Kalan',

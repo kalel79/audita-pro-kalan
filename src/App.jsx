@@ -12,6 +12,7 @@ import Auditoria from './components/Auditoria';
 import Reporte from './components/Reporte';
 import Admin from './components/Admin';
 import InformeHallazgos, { InformesLista } from './components/InformeHallazgos';
+import AvisoActualizacion from './components/AvisoActualizacion';
 
 // getSession y onAuthStateChange llegan casi juntos al abrir la app. La
 // preparación del dispositivo corre una sola vez por cuenta, y el sync
@@ -165,6 +166,7 @@ export default function App() {
   return (
     <div style={S.app}>
       <Header usuario={usuario} perfil={perfil} />
+      <AvisoActualizacion />
       <main style={S.main} className="safe-bottom">
         <Routes>
           <Route path="/" element={<Inicio perfil={perfil} usuario={usuario} />} />
