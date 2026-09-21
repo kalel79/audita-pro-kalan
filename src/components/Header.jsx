@@ -153,6 +153,7 @@ export default function Header({ usuario, perfil }) {
             </>
           )}
           <button onClick={cerrarSesion} style={S.menuBtn}>Cerrar sesión</button>
+          <div style={S.version}>Versión {__VERSION__}</div>
         </div>
       )}
     </header>
@@ -201,6 +202,7 @@ const S = {
     marginTop: 6,
   },
   menuItem: { padding: '8px 10px', fontSize: 13, color: K.gris, borderBottom: '1px solid #E4E0D6', marginBottom: 8 },
+  version: { fontSize: 11, color: K.gris, textAlign: 'center', marginTop: 10 },
   menuBtn: {
     background: K.rojo, color: '#fff', border: 'none', padding: '10px 14px',
     borderRadius: 8, fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: 13.5,
