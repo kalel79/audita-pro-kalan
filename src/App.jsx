@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { iniciarAutoSync, sincronizar } from './lib/sync';
+import { prepararDispositivoPara } from './lib/db';
 import { K } from './lib/utils';
 import Login from './components/Login';
 import Header from './components/Header';
@@ -10,6 +11,21 @@ import NuevaAuditoria from './components/NuevaAuditoria';
 import Auditoria from './components/Auditoria';
 import Reporte from './components/Reporte';
 import Admin from './components/Admin';
+
+// getSession y onAuthStateChange llegan casi juntos al abrir la app. La
+// preparación del dispositivo corre una sola vez por cuenta, y el sync
+// espera a que termine para no descargar sobre datos que se están borrando.
+let preparacion = null;
+function prepararYSincronizar(session) {
+  if (!session) return;
+  const uid = session.user.id;
+  if (preparacion?.uid !== uid) {
+    preparacion = { uid, promesa: prepararDispositivoPara(uid) };
+  }
+  preparacion.promesa
+    .then(() => sincronizar())
+    .catch((e) => console.error('Error preparando el dispositivo:', e));
+}
 
 export default function App() {
   const [sesion, setSesion]     = useState(null);
@@ -40,7 +56,7 @@ export default function App() {
       .then(async ({ data: { session } }) => {
         setSesion(session);
         await cargarPerfil(session);
-        if (session) sincronizar();
+        prepararYSincronizar(session);
       })
       .catch((e) => {
         console.error('Error obteniendo sesión:', e);
@@ -54,7 +70,7 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSesion(session);
       cargarPerfil(session);
-      if (session) sincronizar();
+      prepararYSincronizar(session);
     });
 
     const unsub = iniciarAutoSync((res) => {
@@ -150,7 +166,7 @@ export default function App() {
       <Header usuario={usuario} perfil={perfil} />
       <main style={S.main} className="safe-bottom">
         <Routes>
-          <Route path="/" element={<Inicio />} />
+          <Route path="/" element={<Inicio perfil={perfil} usuario={usuario} />} />
           <Route path="/nueva" element={<NuevaAuditoria usuario={usuario} />} />
           <Route path="/auditoria/:id" element={<Auditoria />} />
           <Route path="/reporte/:id" element={<Reporte />} />

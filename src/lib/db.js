@@ -144,6 +144,69 @@ export async function aplicarDescarga(remota) {
   });
 }
 
+/**
+ * Quita las auditorías que ya no existen en el servidor. Las que tienen
+ * cambios sin subir se conservan: son trabajo que todavía no llega a la nube.
+ */
+export async function quitarAusentesDelServidor(idsServidor) {
+  const ids = new Set(idsServidor);
+  return await db.transaction('rw', db.auditorias, db.hallazgos, async () => {
+    const fuera = (await db.auditorias.toArray())
+      .filter((a) => !a.dirty && !ids.has(a.id))
+      .map((a) => a.id);
+    if (fuera.length) {
+      await db.auditorias.bulkDelete(fuera);
+      await db.hallazgos.where('auditoria_id').anyOf(fuera).delete();
+    }
+    return fuera.length;
+  });
+}
+
+// =================== DUEÑO DEL DISPOSITIVO ===================
+// Los datos locales son de la cuenta que los descargó. Un admin descarga el
+// trabajo de todos los auditores, así que si después entra otra cuenta en el
+// mismo dispositivo no debe encontrarlos.
+const CLAVE_DUENO = 'apk_dueno_datos_locales';
+
+function leerDueno() {
+  try { return localStorage.getItem(CLAVE_DUENO); } catch { return null; }
+}
+
+function escribirDueno(userId) {
+  try {
+    if (userId) localStorage.setItem(CLAVE_DUENO, userId);
+    else localStorage.removeItem(CLAVE_DUENO);
+  } catch { /* sin almacenamiento: se omite */ }
+}
+
+/**
+ * Se llama al iniciar sesión, antes del primer sync. Si los datos locales son
+ * de otra cuenta, se borra todo lo que ya está en el servidor. Lo que tenga
+ * cambios sin subir se conserva: borrarlo sería perder trabajo de campo.
+ */
+export async function prepararDispositivoPara(userId) {
+  const dueno = leerDueno();
+  // Sin dueño registrado = dispositivo anterior a este control; los datos
+  // pueden ser de esta misma cuenta, así que no se borra nada.
+  if (dueno && dueno !== userId) {
+    if ((await contarPendientes()) === 0) {
+      await limpiarTodo();
+    } else {
+      await db.transaction('rw', db.auditorias, db.hallazgos, async () => {
+        await db.auditorias.filter((a) => !a.dirty).delete();
+        await db.hallazgos.filter((h) => !h.dirty).delete();
+      });
+    }
+  }
+  escribirDueno(userId);
+}
+
+/** Al cerrar sesión: deja el dispositivo limpio para la siguiente cuenta. */
+export async function liberarDispositivo() {
+  await limpiarTodo();
+  escribirDueno(null);
+}
+
 export async function limpiarTodo() {
   await db.auditorias.clear();
   await db.hallazgos.clear();

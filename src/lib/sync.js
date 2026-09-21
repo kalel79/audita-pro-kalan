@@ -1,7 +1,9 @@
 import { supabase, subirFoto } from './supabase';
-import { db, confirmarAuditoriaSubida, aplicarDescarga } from './db';
+import { db, confirmarAuditoriaSubida, aplicarDescarga, quitarAusentesDelServidor } from './db';
 import { fusionarAuditoria, mismaVersion } from './fusion';
 import { calcCumplimiento, dictamen } from './utils';
+
+const PAGINA = 1000;
 
 /**
  * Sincronización offline-first.
@@ -117,7 +119,9 @@ async function ejecutar(onProgress) {
           normativa: aSubir.normativa,
           fecha: aSubir.fecha,
           auditor: aSubir.auditor,
-          auditor_id: user.id,
+          // Se conserva el dueño: si un admin edita la auditoría de otro
+          // auditor, sigue siendo de ese auditor.
+          auditor_id: aSubir.auditor_id || user.id,
           cerrada: !!aSubir.cerrada,
           checklist: aSubir.checklist,
           pct_cumplimiento: aSubir.pct_cumplimiento || 0,
@@ -180,13 +184,21 @@ async function ejecutar(onProgress) {
     }
 
     // ====== 4. DESCARGAR AUDITORÍAS DEL SERVIDOR ======
-    const { data: auditoriasServidor, error: errFetch } = await supabase
-      .from('auditorias')
-      .select('*')
-      .eq('auditor_id', user.id)
-      .order('actualizada_en', { ascending: false });
-
-    if (errFetch) throw errFetch;
+    // Sin filtro por auditor: RLS decide. Un consultor recibe sólo las suyas;
+    // un admin recibe las de todos los auditores.
+    // Por páginas, porque la API corta en 1000 filas y abajo se usa la lista
+    // completa para saber qué se borró en el servidor.
+    const auditoriasServidor = [];
+    for (let desde = 0; ; desde += PAGINA) {
+      const { data: pagina, error: errFetch } = await supabase
+        .from('auditorias')
+        .select('*')
+        .order('id')
+        .range(desde, desde + PAGINA - 1);
+      if (errFetch) throw errFetch;
+      auditoriasServidor.push(...pagina);
+      if (pagina.length < PAGINA) break;
+    }
 
     onProgress({ fase: 'descargando', total: auditoriasServidor.length, hecho: 0 });
 
@@ -215,6 +227,11 @@ async function ejecutar(onProgress) {
       }
       onProgress({ fase: 'descargando', total: auditoriasServidor.length, hecho: i + 1 });
     }
+
+    // Lo que ya no está en el servidor se borró desde otro dispositivo (o ya
+    // no le corresponde a esta cuenta). Se quita de aquí, salvo que tenga
+    // cambios sin subir.
+    await quitarAusentesDelServidor(auditoriasServidor.map((a) => a.id));
 
     onProgress({ fase: 'completo' });
     return {

@@ -2,13 +2,44 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, eliminarAuditoria } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { K, COLOR_CAT, calcCumplimiento, dictamen } from '../lib/utils';
 import Logo from './Logo';
 import Donut from './Donut';
 
-export default function Inicio() {
+export default function Inicio({ perfil, usuario }) {
   const navigate = useNavigate();
-  const auditorias = useLiveQuery(() => db.auditorias.orderBy('fecha').reverse().toArray()) || [];
+  const esAdmin = perfil?.rol === 'admin';
+  const todas = useLiveQuery(() => db.auditorias.orderBy('fecha').reverse().toArray()) || [];
+  const [filtro, setFiltro] = useState('todos');
+  const [nombres, setNombres] = useState({});
+
+  // Nombres de los auditores desde sus perfiles. Sin conexión se usa el
+  // nombre capturado en la propia auditoría.
+  useEffect(() => {
+    if (!esAdmin) return;
+    supabase.from('perfiles').select('id, nombre, email').then(({ data }) => {
+      if (data) setNombres(Object.fromEntries(data.map((p) => [p.id, (p.nombre || p.email || '').trim()])));
+    });
+  }, [esAdmin]);
+
+  const nombreDe = (a) => nombres[a.auditor_id] || (a.auditor || '').trim() || 'Sin auditor';
+  const esMia = (a) => a.auditor_id === usuario?.id;
+
+  const auditores = useMemo(() => {
+    const m = new Map();
+    todas.forEach((a) => {
+      const k = a.auditor_id || 'sin';
+      const prev = m.get(k);
+      m.set(k, { id: k, nombre: nombreDe(a), n: (prev?.n || 0) + 1, mio: esMia(a) });
+    });
+    return [...m.values()].sort((x, y) => (y.mio - x.mio) || x.nombre.localeCompare(y.nombre));
+  }, [todas, nombres]);
+
+  const auditorias = useMemo(
+    () => (!esAdmin || filtro === 'todos' ? todas : todas.filter((a) => (a.auditor_id || 'sin') === filtro)),
+    [todas, filtro, esAdmin],
+  );
 
   const stats = useMemo(() => {
     const total = auditorias.length;
@@ -22,9 +53,12 @@ export default function Inicio() {
     return { total, cerradas, abiertas: total - cerradas, aprobadas, riesgo };
   }, [auditorias]);
 
-  const borrar = async (id) => {
-    if (confirm('¿Eliminar esta auditoría? Esta acción no se puede deshacer.')) {
-      await eliminarAuditoria(id);
+  const borrar = async (a) => {
+    const texto = esMia(a)
+      ? '¿Eliminar esta auditoría? Esta acción no se puede deshacer.'
+      : `Esta auditoría es de ${nombreDe(a)}.\n\n¿Eliminarla? Se borrará también para ${nombreDe(a)} y no se puede deshacer.`;
+    if (confirm(texto)) {
+      await eliminarAuditoria(a.id);
     }
   };
 
@@ -37,6 +71,18 @@ export default function Inicio() {
         </div>
         <button style={S.btnPrimary} onClick={() => navigate('/nueva')}>+ Nueva auditoría</button>
       </div>
+
+      {esAdmin && auditores.length > 0 && (
+        <div style={S.filtroBar}>
+          <label htmlFor="filtro-auditor" style={S.filtroLbl}>Auditor</label>
+          <select id="filtro-auditor" style={S.filtroSel} value={filtro} onChange={(e) => setFiltro(e.target.value)}>
+            <option value="todos">Todos los auditores ({todas.length})</option>
+            {auditores.map((x) => (
+              <option key={x.id} value={x.id}>{x.nombre}{x.mio ? ' (tú)' : ''} ({x.n})</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div style={S.stats}>
         <Stat n={stats.total} l="Auditorías totales" c={K.azul} />
@@ -72,6 +118,11 @@ export default function Inicio() {
                     <span style={{ ...S.pill, background: cat + '1A', color: cat }}>{a.categoria}</span>
                   </div>
                   <div style={S.cardGiro}>{a.giro}</div>
+                  {esAdmin && (
+                    <div style={{ ...S.cardAuditor, color: esMia(a) ? K.verde : K.azulCl }}>
+                      👤 {esMia(a) ? 'Tuya' : nombreDe(a)}
+                    </div>
+                  )}
                   <div style={S.cardMeta}>
                     {a.tramite} · {a.fecha}
                     {a.dirty && <span style={S.dirtyTag}>● Sin sincronizar</span>}
@@ -88,7 +139,7 @@ export default function Inicio() {
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button style={S.btnGhost} onClick={() => navigate(`/auditoria/${a.id}`)}>Abrir</button>
                     <button style={S.btnGhost} onClick={() => navigate(`/reporte/${a.id}`)}>Dictamen</button>
-                    <button style={S.btnDanger} onClick={() => borrar(a.id)}>✕</button>
+                    <button style={S.btnDanger} onClick={() => borrar(a)}>✕</button>
                   </div>
                 </div>
               </div>
@@ -121,6 +172,10 @@ const S = {
   card: { background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 14px rgba(0,0,0,.06)' },
   catBar: { height: 5 },
   cardTit: { fontWeight: 700, color: K.carbon, fontSize: 15, lineHeight: 1.25 },
+  cardAuditor: { fontSize: 12, fontWeight: 700, marginTop: 6 },
+  filtroBar: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14, background: '#fff', padding: '10px 14px', borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,.04)' },
+  filtroLbl: { fontSize: 12, fontWeight: 700, color: K.gris, letterSpacing: 0.3 },
+  filtroSel: { flex: 1, minWidth: 200, padding: '9px 12px', borderRadius: 9, border: '1.5px solid #DDD8CC', fontSize: 14, background: '#FCFBF8', color: K.carbon },
   cardGiro: { fontSize: 12.5, color: K.gris, marginTop: 4, lineHeight: 1.4 },
   cardMeta: { fontSize: 11.5, color: K.gris, marginTop: 8, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 },
   dirtyTag: { color: K.amber, fontWeight: 700 },

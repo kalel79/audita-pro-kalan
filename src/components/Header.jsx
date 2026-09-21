@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { sincronizar, alSincronizar } from '../lib/sync';
-import { contarPendientes } from '../lib/db';
+import { contarPendientes, liberarDispositivo } from '../lib/db';
 import { K } from '../lib/utils';
 import Logo from './Logo';
 
@@ -85,7 +85,17 @@ export default function Header({ usuario, perfil }) {
     if (texto) alert(texto);
   };
 
+  // Antes de salir se intenta subir todo, y luego se borran los datos locales
+  // para que la siguiente cuenta en este dispositivo no vea lo de esta.
   const cerrarSesion = async () => {
+    if (navigator.onLine) await sincronizar();
+    const pend = await contarPendientes();
+    if (pend > 0 && !confirm(
+      `Hay ${pend} ${pend === 1 ? 'cambio que todavía no se sube' : 'cambios que todavía no se suben'} al servidor.\n\n` +
+      'Si cierras sesión ahora se borrarán de este dispositivo y se perderán.\n\n' +
+      'Conéctate a internet y sincroniza antes de salir. ¿Cerrar sesión de todos modos?'
+    )) return;
+    await liberarDispositivo();
     await supabase.auth.signOut();
     navigate('/login');
   };
