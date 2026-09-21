@@ -7,10 +7,12 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // 'prompt': la versión nueva espera y la app ofrece aplicarla después de
-      // guardar lo abierto. Con 'autoUpdate' el dispositivo seguía con la
-      // versión vieja hasta cerrar la app varias veces.
-      registerType: 'prompt',
+      // 'autoUpdate': el service worker nuevo se activa de inmediato, para que
+      // ningún dispositivo se quede atorado con una versión en espera. La
+      // recarga la decide el usuario: ver src/lib/actualizacion.js, que es
+      // quien registra el service worker (por eso injectRegister: false).
+      registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['favicon-32.png', 'apple-touch-icon.png', 'logo-kalan.png'],
       manifest: {
         name: 'Audita Pro Kalan',
@@ -31,6 +33,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Activación inmediata (ver comentario de registerType).
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
         runtimeCaching: [
           {
