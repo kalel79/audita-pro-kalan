@@ -17,27 +17,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 /**
- * Sube una imagen (DataURL) al bucket de Supabase Storage.
- * Devuelve { path, url } o lanza error.
- */
-export async function subirFoto(dataUrl, auditoriaId) {
-  // Convierte DataURL a Blob
-  const res = await fetch(dataUrl);
-  const blob = await res.blob();
-  const ext = blob.type.split('/')[1] || 'jpg';
-  const filename = `${auditoriaId}/${Date.now()}.${ext}`;
-
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .upload(filename, blob, { cacheControl: '3600', upsert: false });
-
-  if (error) throw error;
-
-  const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(data.path);
-  return { path: data.path, url: urlData.publicUrl };
-}
-
-/**
  * Devuelve URL firmada temporal de una foto en Storage.
  * Útil cuando el bucket no es público.
  */

@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { db, guardarAuditoria, guardarHallazgo, eliminarHallazgo } from '../lib/db';
 import { fusionarAuditoria } from '../lib/fusion';
 import { K, COLOR_CAT, ESTADOS, calcCumplimiento, celdaAnexo, descuadresAnexo, dictamen, fileADataURL, uuid } from '../lib/utils';
+import { comprimirImagen } from '../lib/fotos';
 import Donut from './Donut';
+import FotoHallazgo from './FotoHallazgo';
 
 // Espera tras el último cambio antes de escribir al disco. Además se escribe
 // de inmediato cuando la app pasa a segundo plano, porque en tablets Huawei
@@ -493,7 +495,13 @@ function Hallazgos({ hallazgos, auditoriaId, onAdd, onDel }) {
   const onFile = async (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    setFoto(await fileADataURL(f));
+    try {
+      setFoto(await comprimirImagen(f));
+    } catch (err) {
+      // Formato que el navegador no puede redibujar: se guarda tal cual.
+      console.warn('No se pudo comprimir la foto, se guarda original:', err);
+      setFoto(await fileADataURL(f));
+    }
   };
 
   const agregar = async () => {
@@ -555,13 +563,7 @@ function Hallazgos({ hallazgos, auditoriaId, onAdd, onDel }) {
         <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
           {hallazgos.map((h, i) => (
             <div key={h.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 2px 10px rgba(0,0,0,.04)' }}>
-              {(h.foto || h.foto_url) && (
-                <img
-                  src={h.foto_url || h.foto}
-                  alt=""
-                  style={{ width: 76, height: 76, objectFit: 'cover', borderRadius: 8 }}
-                />
-              )}
+              <FotoHallazgo h={h} size={76} radius={8} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 700, color: K.carbon }}>Hallazgo {i + 1}</span>

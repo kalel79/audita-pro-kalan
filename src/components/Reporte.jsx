@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { db } from '../lib/db';
+import { asegurarFotoLocal } from '../lib/fotos';
 import { K, COLOR_CAT, calcCumplimiento, celdaAnexo, descuadresAnexo, dictamen } from '../lib/utils';
 import Logo from './Logo';
 import Donut from './Donut';
+import FotoHallazgo from './FotoHallazgo';
 
 export default function Reporte() {
   const { id } = useParams();
@@ -18,6 +20,14 @@ export default function Reporte() {
       setAud(a);
       const hs = await db.hallazgos.where('auditoria_id').equals(id).toArray();
       setHallazgos(hs);
+      // El dictamen exportado lleva las fotos incrustadas, así que se traen
+      // antes las que este dispositivo todavía no tenga.
+      if (hs.some((h) => !h.foto && h.foto_path)) {
+        const conFoto = await Promise.all(hs.map(async (h) => (
+          h.foto || !h.foto_path ? h : { ...h, foto: await asegurarFotoLocal(h).catch(() => null) }
+        )));
+        setHallazgos(conFoto);
+      }
     })();
   }, [id, navigate]);
 
@@ -139,7 +149,11 @@ export default function Reporte() {
     const hallazgosHTML = hallazgos.length === 0 ? '' : `<div style="margin-top:22px;">
       <div style="font-weight:800;color:${K.azul};font-size:15px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid ${K.verde};">📸 Hallazgos documentados</div>
       ${hallazgos.map((h, i) => `<div style="display:flex;gap:12px;border:1px solid #E4E0D6;border-radius:8px;padding:12px;margin-bottom:10px;page-break-inside:avoid;">
-        ${(h.foto_url || h.foto) ? `<img src="${h.foto_url || h.foto}" alt="" style="width:90px;height:90px;object-fit:cover;border-radius:6px;"/>` : ''}
+        ${h.foto
+          ? `<img src="${escapeHtml(h.foto)}" alt="" style="width:90px;height:90px;object-fit:cover;border-radius:6px;"/>`
+          : h.foto_path
+            ? `<div style="width:90px;height:90px;border:1px dashed #DDD8CC;border-radius:6px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;color:${K.gris};padding:6px;box-sizing:border-box;">Foto no disponible sin conexión</div>`
+            : ''}
         <div><strong style="color:${K.carbon};">Hallazgo ${i + 1}</strong>
           <span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:#0001;color:${K.gris};margin-left:8px;">Gravedad ${h.gravedad || h.grav}</span>
           <div style="font-size:13.5px;color:${K.carbon};margin-top:4px;">${escapeHtml(h.descripcion || h.desc)}</div>
@@ -420,9 +434,7 @@ export default function Reporte() {
             <div style={{ display: 'grid', gap: 12 }}>
               {hallazgos.map((h, i) => (
                 <div key={h.id} style={{ display: 'flex', gap: 12, border: '1px solid #E4E0D6', borderRadius: 8, padding: 12 }}>
-                  {(h.foto_url || h.foto) && (
-                    <img src={h.foto_url || h.foto} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 6 }} />
-                  )}
+                  <FotoHallazgo h={h} size={90} radius={6} />
                   <div>
                     <strong style={{ color: K.carbon }}>Hallazgo {i + 1}</strong>
                     <span style={{ ...S.pill, marginLeft: 8, background: '#0001', color: K.gris }}>Gravedad {h.gravedad || h.grav}</span>

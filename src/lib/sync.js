@@ -1,5 +1,6 @@
-import { supabase, subirFoto } from './supabase';
-import { db, confirmarAuditoriaSubida, aplicarDescarga, quitarAusentesDelServidor } from './db';
+import { supabase } from './supabase';
+import { db, confirmarAuditoriaSubida, aplicarDescarga, quitarAusentesDelServidor, aplicarHallazgosDelServidor } from './db';
+import { subirFotoHallazgo, asegurarFotoLocal, borrarFotos, rutasFotosDeAuditoria } from './fotos';
 import { fusionarAuditoria, mismaVersion } from './fusion';
 import { calcCumplimiento, dictamen } from './utils';
 
@@ -60,8 +61,16 @@ async function ejecutar(onProgress) {
       try {
         const tabla = item.tipo === 'auditoria' ? 'auditorias' : item.tipo === 'hallazgo' ? 'hallazgos' : null;
         if (tabla && item.accion === 'delete') {
+          // Las fotos de una auditoría se borran antes que la auditoría: el
+          // permiso sobre la carpeta depende de que la auditoría exista.
+          if (item.tipo === 'auditoria') {
+            await borrarFotos(await rutasFotosDeAuditoria(item.payload.id));
+          }
           const { error } = await supabase.from(tabla).delete().eq('id', item.payload.id);
           if (error) throw error;
+          if (item.tipo === 'hallazgo' && item.payload.foto_path) {
+            await borrarFotos([item.payload.foto_path]);
+          }
         }
         await db.cola_sync.delete(item.id);
       } catch (e) {
@@ -148,14 +157,13 @@ async function ejecutar(onProgress) {
     for (let i = 0; i < hallazgosSucios.length; i++) {
       const h = hallazgosSucios[i];
       try {
-        let fotoUrl = h.foto_url;
         let fotoPath = h.foto_path;
 
-        // Si la foto está como DataURL local, súbela primero
+        // La foto sube primero y su ruta se guarda de inmediato: si el sync
+        // se corta antes de registrar el hallazgo, el reintento no la resube.
         if (h.foto && h.foto.startsWith('data:') && !fotoPath) {
-          const upload = await subirFoto(h.foto, h.auditoria_id);
-          fotoUrl = upload.url;
-          fotoPath = upload.path;
+          fotoPath = await subirFotoHallazgo(h);
+          await db.hallazgos.update(h.id, { foto_path: fotoPath });
         }
 
         const payload = {
@@ -163,19 +171,16 @@ async function ejecutar(onProgress) {
           auditoria_id: h.auditoria_id,
           descripcion: h.descripcion || h.desc,
           gravedad: h.gravedad || h.grav,
-          foto_url: fotoUrl,
-          foto_path: fotoPath,
-          creado_por: user.id,
+          // El bucket es privado: no hay URL pública que guardar.
+          foto_url: null,
+          foto_path: fotoPath || null,
+          creado_por: h.creado_por || user.id,
         };
 
         const { error } = await supabase.from('hallazgos').upsert(payload);
         if (error) throw error;
 
-        // Actualizar localmente con la URL pública
-        h.foto_url = fotoUrl;
-        h.foto_path = fotoPath;
-        h.dirty = false;
-        await db.hallazgos.put(h);
+        await db.hallazgos.update(h.id, { foto_path: fotoPath || null, dirty: false });
         subidas++;
       } catch (e) {
         errores.push(`Hallazgo: ${e.message}`);
@@ -207,24 +212,7 @@ async function ejecutar(onProgress) {
 
       // Sólo se escribe si la copia local no tiene cambios pendientes y la
       // versión del servidor es distinta de la que ya se tiene.
-      if (await aplicarDescarga(remota)) {
-        descargas++;
-
-        // También bajar hallazgos
-        const { data: hallazgos, error: errHal } = await supabase
-          .from('hallazgos')
-          .select('*')
-          .eq('auditoria_id', remota.id);
-
-        if (errHal) {
-          errores.push(`Hallazgos de ${remota.folio}: ${errHal.message}`);
-        } else {
-          for (const hr of hallazgos) {
-            hr.dirty = false;
-            await db.hallazgos.put(hr);
-          }
-        }
-      }
+      if (await aplicarDescarga(remota)) descargas++;
       onProgress({ fase: 'descargando', total: auditoriasServidor.length, hecho: i + 1 });
     }
 
@@ -232,6 +220,35 @@ async function ejecutar(onProgress) {
     // no le corresponde a esta cuenta). Se quita de aquí, salvo que tenga
     // cambios sin subir.
     await quitarAusentesDelServidor(auditoriasServidor.map((a) => a.id));
+
+    // ====== 5. DESCARGAR HALLAZGOS DEL SERVIDOR ======
+    // Van aparte de las auditorías: agregar un hallazgo no cambia la versión
+    // de su auditoría, así que bajarlos sólo cuando la auditoría cambiaba
+    // hacía que los hallazgos nuevos de otro dispositivo nunca llegaran.
+    const hallazgosServidor = [];
+    for (let desde = 0; ; desde += PAGINA) {
+      const { data: pagina, error: errHal } = await supabase
+        .from('hallazgos')
+        .select('*')
+        .order('id')
+        .range(desde, desde + PAGINA - 1);
+      if (errHal) throw errHal;
+      hallazgosServidor.push(...pagina);
+      if (pagina.length < PAGINA) break;
+    }
+    await aplicarHallazgosDelServidor(hallazgosServidor);
+
+    // Fotos que este dispositivo todavía no tiene, para verlas sin conexión.
+    // Un fallo aquí no detiene el sync: se reintenta al abrir el hallazgo o
+    // en el siguiente sync.
+    const sinFoto = await db.hallazgos.filter((h) => !!h.foto_path && !h.foto).toArray();
+    for (const h of sinFoto) {
+      try {
+        await asegurarFotoLocal(h);
+      } catch (e) {
+        errores.push(`Foto de hallazgo: ${e.message}`);
+      }
+    }
 
     onProgress({ fase: 'completo' });
     return {

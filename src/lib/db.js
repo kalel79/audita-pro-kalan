@@ -62,13 +62,40 @@ export async function listarHallazgosDeAuditoria(auditoriaId) {
 }
 
 export async function eliminarHallazgo(id) {
-  await db.hallazgos.delete(id);
-  await db.cola_sync.add({
-    tipo: 'hallazgo',
-    accion: 'delete',
-    payload: { id },
-    intentos: 0,
-    creado_en: new Date().toISOString(),
+  await db.transaction('rw', db.hallazgos, db.cola_sync, async () => {
+    const h = await db.hallazgos.get(id);
+    await db.hallazgos.delete(id);
+    await db.cola_sync.add({
+      tipo: 'hallazgo',
+      accion: 'delete',
+      // La ruta viaja con la eliminación para borrar también la foto del bucket.
+      payload: { id, foto_path: h?.foto_path || null },
+      intentos: 0,
+      creado_en: new Date().toISOString(),
+    });
+  });
+}
+
+/**
+ * Aplica los hallazgos del servidor. No toca los que tienen cambios sin subir,
+ * conserva la foto ya descargada si sigue siendo la misma, y quita los que se
+ * borraron en el servidor.
+ */
+export async function aplicarHallazgosDelServidor(remotos) {
+  await db.transaction('rw', db.hallazgos, db.auditorias, async () => {
+    const auditoriasLocales = new Set(await db.auditorias.toCollection().primaryKeys());
+    const idsServidor = new Set(remotos.map((h) => h.id));
+    for (const hr of remotos) {
+      if (!auditoriasLocales.has(hr.auditoria_id)) continue;
+      const local = await db.hallazgos.get(hr.id);
+      if (local?.dirty) continue;
+      const foto = local && local.foto_path === hr.foto_path ? local.foto : undefined;
+      await db.hallazgos.put({ ...hr, foto, dirty: false });
+    }
+    const fuera = (await db.hallazgos.toArray())
+      .filter((h) => !h.dirty && !idsServidor.has(h.id))
+      .map((h) => h.id);
+    if (fuera.length) await db.hallazgos.bulkDelete(fuera);
   });
 }
 
