@@ -87,8 +87,14 @@ export default function Inicio({ perfil, usuario }) {
       <div style={S.stats}>
         <Stat n={stats.total} l="Auditorías totales" c={K.azul} />
         <Stat n={stats.abiertas} l="En proceso" c={K.azulCl} />
-        <Stat n={stats.aprobadas} l="Aprobadas" c={K.verde} />
-        <Stat n={stats.riesgo} l="En riesgo" c={K.rojo} />
+        {esAdmin ? (
+          <>
+            <Stat n={stats.aprobadas} l="Aprobadas" c={K.verde} />
+            <Stat n={stats.riesgo} l="En riesgo" c={K.rojo} />
+          </>
+        ) : (
+          <Stat n={stats.cerradas} l="Cerradas" c={K.verde} />
+        )}
       </div>
 
       {auditorias.length === 0 ? (
@@ -129,16 +135,18 @@ export default function Inicio({ perfil, usuario }) {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-                    <Donut pct={pct} color={d.color} size={52} />
+                    <Donut pct={pct} color={esAdmin ? d.color : K.azul} size={52} />
                     <div>
-                      <div style={{ fontWeight: 800, color: d.color, fontSize: 11, letterSpacing: 0.3, lineHeight: 1.2 }}>{d.label}</div>
+                      <div style={{ fontWeight: 800, color: esAdmin ? d.color : K.azul, fontSize: 11, letterSpacing: 0.3, lineHeight: 1.2 }}>
+                        {esAdmin ? d.label : `Calificación ${pct}%`}
+                      </div>
                       <div style={{ fontSize: 11, color: K.gris, marginTop: 2 }}>{a.cerrada ? 'Cerrada' : 'En proceso'}</div>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button style={S.btnGhost} onClick={() => navigate(`/auditoria/${a.id}`)}>Abrir</button>
-                    <button style={S.btnGhost} onClick={() => navigate(`/reporte/${a.id}`)}>Dictamen</button>
+                    <button style={S.btnGhost} onClick={() => navigate(`/reporte/${a.id}`)}>{esAdmin ? 'Dictamen' : 'Resumen'}</button>
                     <button style={S.btnDanger} onClick={() => borrar(a)}>✕</button>
                   </div>
                 </div>

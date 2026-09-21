@@ -11,6 +11,7 @@ import NuevaAuditoria from './components/NuevaAuditoria';
 import Auditoria from './components/Auditoria';
 import Reporte from './components/Reporte';
 import Admin from './components/Admin';
+import InformeHallazgos, { InformesLista } from './components/InformeHallazgos';
 
 // getSession y onAuthStateChange llegan casi juntos al abrir la app. La
 // preparación del dispositivo corre una sola vez por cuenta, y el sync
@@ -168,10 +169,14 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Inicio perfil={perfil} usuario={usuario} />} />
           <Route path="/nueva" element={<NuevaAuditoria usuario={usuario} />} />
-          <Route path="/auditoria/:id" element={<Auditoria />} />
-          <Route path="/reporte/:id" element={<Reporte />} />
+          <Route path="/auditoria/:id" element={<Auditoria perfil={perfil} />} />
+          <Route path="/reporte/:id" element={<Reporte perfil={perfil} />} />
           {perfil?.rol === 'admin' && (
-            <Route path="/admin" element={<Admin />} />
+            <>
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/informes" element={<InformesLista />} />
+              <Route path="/informe/:id" element={<InformeHallazgos usuario={usuario} perfil={perfil} />} />
+            </>
           )}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

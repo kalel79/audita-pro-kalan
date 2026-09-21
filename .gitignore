@@ -27,3 +27,7 @@ Thumbs.db
 
 # Estado local del CLI de Supabase (incluye pooler-url)
 supabase/.temp/
+
+# Catálogo de acciones correctivas de Kalan: vive sólo en la base (tabla
+# acciones_correctivas, sólo admins). El repositorio es público.
+supabase/privado/

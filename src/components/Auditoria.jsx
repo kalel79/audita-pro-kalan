@@ -40,7 +40,8 @@ async function persistirAuditoria(actual, selloEsperado) {
   });
 }
 
-export default function Auditoria() {
+export default function Auditoria({ perfil }) {
+  const esAdmin = perfil?.rol === 'admin';
   const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -228,8 +229,11 @@ export default function Auditoria() {
         </div>
         {!editando && (
           <div style={{ textAlign: 'center', flexShrink: 0 }}>
-            <Donut pct={stats.pct} color={d.color} size={84} bold />
-            <div style={{ fontWeight: 800, color: d.color, fontSize: 10.5, marginTop: 6, maxWidth: 100, lineHeight: 1.2 }}>{d.label}</div>
+            {/* El dictamen (APROBADO / RIESGO) es del admin; el auditor ve sólo la calificación. */}
+            <Donut pct={stats.pct} color={esAdmin ? d.color : K.azul} size={84} bold />
+            <div style={{ fontWeight: 800, color: esAdmin ? d.color : K.azul, fontSize: 10.5, marginTop: 6, maxWidth: 100, lineHeight: 1.2 }}>
+              {esAdmin ? d.label : 'CALIFICACIÓN'}
+            </div>
           </div>
         )}
       </div>
@@ -295,7 +299,7 @@ export default function Auditoria() {
 
       <div style={S.actions}>
         <button style={S.btnPrimary} onClick={guardar}>Guardar cambios</button>
-        <button style={S.btnSec} onClick={async () => { if (await guardar()) navigate(`/reporte/${id}`); }}>Ver dictamen →</button>
+        <button style={S.btnSec} onClick={async () => { if (await guardar()) navigate(`/reporte/${id}`); }}>{esAdmin ? 'Ver dictamen →' : 'Ver resumen →'}</button>
         <label style={S.closeChk}>
           <input
             type="checkbox"

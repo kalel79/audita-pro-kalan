@@ -1,17 +1,86 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { db } from '../lib/db';
 import { asegurarFotoLocal } from '../lib/fotos';
+import { PLAZOS, cargarCatalogo, cargarAjustes, guardarAjustes, filasCorrectivas } from '../lib/dictamen';
+import Resumen from './Resumen';
 import { K, COLOR_CAT, calcCumplimiento, celdaAnexo, descuadresAnexo, dictamen } from '../lib/utils';
 import Logo from './Logo';
 import Donut from './Donut';
 import FotoHallazgo from './FotoHallazgo';
 
-export default function Reporte() {
+export default function Reporte({ perfil }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const esAdmin = perfil?.rol === 'admin';
   const [aud, setAud] = useState(null);
   const [hallazgos, setHallazgos] = useState([]);
+
+  // Acciones correctivas (sólo admin, en línea).
+  const [catalogo, setCatalogo] = useState(null);
+  const [ajustes, setAjustes] = useState({});
+  const [carga, setCarga] = useState('cargando'); // cargando | ok | error
+  const [guardado, setGuardado] = useState('ok'); // ok | pendiente | error
+  const ajustesRef = useRef({});
+  const timerRef = useRef(null);
+  const pendienteRef = useRef(false);
+
+  useEffect(() => {
+    if (!esAdmin || !aud) return;
+    let vivo = true;
+    setCarga('cargando');
+    Promise.all([cargarCatalogo(aud.giro), cargarAjustes(aud.id)])
+      .then(([cat, aj]) => {
+        if (!vivo) return;
+        setCatalogo(cat);
+        ajustesRef.current = aj;
+        setAjustes(aj);
+        setCarga('ok');
+      })
+      .catch((e) => {
+        console.error('No se pudo cargar el dictamen:', e);
+        if (vivo) setCarga('error');
+      });
+    return () => { vivo = false; };
+  }, [esAdmin, aud?.id, aud?.giro]);
+
+  const guardarYa = async () => {
+    clearTimeout(timerRef.current);
+    if (!pendienteRef.current) return;
+    pendienteRef.current = false;
+    try {
+      await guardarAjustes(id, ajustesRef.current);
+      if (!pendienteRef.current) setGuardado('ok');
+    } catch (e) {
+      console.error('No se pudo guardar el dictamen:', e);
+      pendienteRef.current = true;
+      setGuardado('error');
+    }
+  };
+
+  // Al salir de la pantalla se guarda lo que falte.
+  useEffect(() => () => { guardarYa(); }, []);
+
+  const editar = (itemId, campo, valor) => {
+    const nuevo = { ...ajustesRef.current, [itemId]: { ...ajustesRef.current[itemId], [campo]: valor } };
+    ajustesRef.current = nuevo;
+    setAjustes(nuevo);
+    pendienteRef.current = true;
+    setGuardado('pendiente');
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(guardarYa, 900);
+  };
+
+  const restaurar = (itemId) => {
+    const nuevo = { ...ajustesRef.current };
+    delete nuevo[itemId];
+    ajustesRef.current = nuevo;
+    setAjustes(nuevo);
+    pendienteRef.current = true;
+    setGuardado('pendiente');
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(guardarYa, 300);
+  };
 
   useEffect(() => {
     (async () => {
@@ -51,12 +120,11 @@ export default function Reporte() {
     });
   }, [aud]);
 
-  const noCumplidos = useMemo(() => {
-    if (!aud) return [];
-    const out = [];
-    (aud.checklist || []).forEach((s) => s.i.forEach((i) => { if (i.e === 'no') out.push({ ...i, seccion: s.s }); }));
-    return out;
-  }, [aud]);
+  // No cumple y en proceso, con su acción correctiva y plazo.
+  const noCumplidos = useMemo(
+    () => (aud ? filasCorrectivas(aud, catalogo, ajustes) : []),
+    [aud, catalogo, ajustes],
+  );
 
   // Anexos capturados (p. ej. balance de estupefacientes). Solo se
   // reportan los que tienen al menos un renglón.
@@ -69,7 +137,12 @@ export default function Reporte() {
 
   if (!aud || !d) return <div style={{ padding: 40, textAlign: 'center' }}><div className="apk-spin" /></div>;
 
+  // El auditor sólo ve la calificación; el dictamen es del admin.
+  if (!esAdmin) return <Resumen aud={aud} />;
+
   const imprimir = () => {
+    if (noCumplidos.length > 0 && carga !== 'ok'
+      && !confirm('Las acciones correctivas no se han cargado (se necesita internet). ¿Generar el dictamen sin ellas?')) return;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const pill = (txt, color) => `<span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:${color}1A;color:${color};white-space:nowrap;">${escapeHtml(txt)}</span>`;
     const donutSvg = (p, color, size, bold) => {
@@ -104,23 +177,27 @@ export default function Reporte() {
         <td style="padding:9px 10px;border-bottom:1px solid #F0EDE4;text-align:center;">${pill(s.sem, s.semColor)}</td>
       </tr>`).join('')}</tbody></table>`;
 
+    const thNc = `padding:8px 8px;background:${K.arena};color:${K.azul};font-weight:700;font-size:10.5px;`;
+    const tdNc = 'padding:8px 8px;border-bottom:1px solid #F0EDE4;vertical-align:top;';
     const tablaNoConf = noCumplidos.length === 0
       ? `<p style="font-size:13.5px;color:${K.verde};font-weight:600;">✓ No se detectaron incumplimientos en el checklist.</p>`
-      : `<table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      : `<table style="width:100%;border-collapse:collapse;font-size:11.5px;">
         <thead><tr>
-          <th style="text-align:left;padding:9px 10px;background:${K.arena};color:${K.azul};font-weight:700;font-size:11px;width:30px;">#</th>
-          <th style="text-align:left;padding:9px 10px;background:${K.arena};color:${K.azul};font-weight:700;font-size:11px;">Criterio incumplido</th>
-          <th style="text-align:left;padding:9px 10px;background:${K.arena};color:${K.azul};font-weight:700;font-size:11px;">Sección</th>
-          <th style="text-align:center;padding:9px 10px;background:${K.arena};color:${K.azul};font-weight:700;font-size:11px;">Prioridad</th>
-          <th style="text-align:left;padding:9px 10px;background:${K.arena};color:${K.azul};font-weight:700;font-size:11px;">Fundamento</th>
+          <th style="${thNc}text-align:center;width:26px;">#</th>
+          <th style="${thNc}text-align:left;width:27%;">Criterio</th>
+          <th style="${thNc}text-align:center;">Estado</th>
+          <th style="${thNc}text-align:left;">Fundamento</th>
+          <th style="${thNc}text-align:left;width:36%;">Acción correctiva</th>
+          <th style="${thNc}text-align:center;">Plazo</th>
         </tr></thead><tbody>${noCumplidos.map((i, x) => {
-          const pc = i.p === 'alta' ? K.rojo : i.p === 'media' ? K.amber : K.gris;
-          return `<tr>
-            <td style="padding:9px 10px;border-bottom:1px solid #F0EDE4;text-align:center;font-weight:700;">${x + 1}</td>
-            <td style="padding:9px 10px;border-bottom:1px solid #F0EDE4;">${escapeHtml(i.t)}${i.o ? `<div style="font-size:11.5px;color:${K.gris};font-style:italic;margin-top:3px;">Obs: ${escapeHtml(i.o)}</div>` : ''}</td>
-            <td style="padding:9px 10px;border-bottom:1px solid #F0EDE4;">${escapeHtml(i.seccion)}</td>
-            <td style="padding:9px 10px;border-bottom:1px solid #F0EDE4;text-align:center;">${pill(i.p.toUpperCase(), pc)}</td>
-            <td style="padding:9px 10px;border-bottom:1px solid #F0EDE4;font-size:11.5px;color:${K.azul};font-style:italic;">${escapeHtml(i.f || '—')}</td>
+          const ec = i.e === 'no' ? K.rojo : K.amber;
+          return `<tr style="page-break-inside:avoid;">
+            <td style="${tdNc}text-align:center;font-weight:700;">${x + 1}</td>
+            <td style="${tdNc}">${escapeHtml(i.t)}<div style="font-size:10.5px;color:${K.gris};margin-top:3px;">${escapeHtml(i.seccion)} · Prioridad ${escapeHtml(i.p)}</div>${i.o ? `<div style="font-size:10.5px;color:${K.gris};margin-top:3px;">Obs.: ${escapeHtml(i.o)}</div>` : ''}</td>
+            <td style="${tdNc}text-align:center;">${pill(i.e === 'no' ? 'NO CUMPLE' : 'EN PROCESO', ec)}</td>
+            <td style="${tdNc}font-size:10.5px;color:${K.azul};">${escapeHtml(i.f || '—')}</td>
+            <td style="${tdNc}line-height:1.45;">${escapeHtml(i.accion || '—')}</td>
+            <td style="${tdNc}text-align:center;font-weight:700;white-space:nowrap;">${escapeHtml(i.plazo)}</td>
           </tr>`;
         }).join('')}</tbody></table>`;
 
@@ -220,7 +297,7 @@ export default function Reporte() {
   </div>
 
   <div style="margin-top:22px;">
-    <div style="font-weight:800;color:${K.azul};font-size:15px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid ${K.verde};">⚠ No conformidades detectadas</div>
+    <div style="font-weight:800;color:${K.azul};font-size:15px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid ${K.verde};">⚠ No conformidades y acciones correctivas</div>
     ${tablaNoConf}
   </div>
 
@@ -262,7 +339,8 @@ export default function Reporte() {
     <div className="apk-fade">
       <div className="no-print" style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <button style={S.back} onClick={() => navigate(`/auditoria/${id}`)}>← Volver a la auditoría</button>
-        <button style={{ ...S.btnPrimary, marginLeft: 'auto' }} onClick={imprimir}>⤓ Descargar / Imprimir dictamen</button>
+        <button style={{ ...S.btnSec, marginLeft: 'auto' }} onClick={() => navigate(`/informe/${id}`)}>📸 Informe de hallazgos</button>
+        <button style={S.btnPrimary} onClick={imprimir}>⤓ Descargar / Imprimir dictamen</button>
       </div>
 
       <div style={S.doc}>
@@ -349,38 +427,69 @@ export default function Reporte() {
         </div>
 
         <div style={{ marginTop: 22 }}>
-          <SecTit>⚠ No conformidades detectadas</SecTit>
+          <SecTit>⚠ No conformidades y acciones correctivas</SecTit>
+          {carga === 'cargando' && noCumplidos.length > 0 && (
+            <p style={{ fontSize: 12.5, color: K.gris }}>Cargando acciones correctivas…</p>
+          )}
+          {carga === 'error' && (
+            <div style={{ ...S.aviso, borderLeftColor: K.rojo, color: K.rojo }}>
+              No se pudieron cargar las acciones correctivas. Se necesita conexión a internet; recarga la página cuando la tengas.
+            </div>
+          )}
+          {carga === 'ok' && noCumplidos.length > 0 && (
+            <div style={{ fontSize: 12, color: K.gris, marginBottom: 10 }}>
+              Las acciones vienen precargadas del catálogo de Kalan. Lo que ajustes aquí sólo cambia en esta auditoría ·{' '}
+              <strong style={{ color: guardado === 'error' ? K.rojo : guardado === 'pendiente' ? K.gris : K.verde }}>
+                {guardado === 'error' ? '⚠ No se pudo guardar' : guardado === 'pendiente' ? 'Guardando…' : '✓ Guardado'}
+              </strong>
+            </div>
+          )}
           {noCumplidos.length === 0 ? (
             <p style={{ fontSize: 13.5, color: K.verde, fontWeight: 600 }}>✓ No se detectaron incumplimientos en el checklist.</p>
           ) : (
-            <table style={S.table}>
-              <thead><tr>
-                <th style={{ ...S.th, width: 30 }}>#</th>
-                <th style={S.th}>Criterio</th>
-                <th style={S.th}>Sección</th>
-                <th style={{ ...S.th, textAlign: 'center' }}>Prioridad</th>
-                <th style={S.th}>Fundamento</th>
-              </tr></thead>
-              <tbody>
-                {noCumplidos.map((i, x) => {
-                  const pc = i.p === 'alta' ? K.rojo : i.p === 'media' ? K.amber : K.gris;
-                  return (
-                    <tr key={x}>
-                      <td style={{ ...S.td, textAlign: 'center', fontWeight: 700 }}>{x + 1}</td>
-                      <td style={S.td}>
-                        {i.t}
-                        {i.o && <div style={{ fontSize: 11.5, color: K.gris, fontStyle: 'italic', marginTop: 3 }}>Obs: {i.o}</div>}
-                      </td>
-                      <td style={S.td}>{i.seccion}</td>
-                      <td style={{ ...S.td, textAlign: 'center' }}>
-                        <span style={{ ...S.pill, background: pc + '1A', color: pc }}>{i.p.toUpperCase()}</span>
-                      </td>
-                      <td style={{ ...S.td, fontSize: 11.5, color: K.azul, fontStyle: 'italic' }}>{i.f || '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {noCumplidos.map((i, x) => {
+                const ec = i.e === 'no' ? K.rojo : K.amber;
+                const pc = i.p === 'alta' ? K.rojo : i.p === 'media' ? K.amber : K.gris;
+                const editada = ajustes[i.id]?.accion != null && ajustes[i.id].accion !== i.accionCatalogo;
+                return (
+                  <div key={i.id} style={{ ...S.ncCard, borderLeftColor: ec }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <strong style={{ color: K.carbon }}>{x + 1}.</strong>
+                      <span style={{ ...S.pill, background: ec + '1A', color: ec }}>{i.e === 'no' ? 'NO CUMPLE' : 'EN PROCESO'}</span>
+                      <span style={{ ...S.pill, background: pc + '1A', color: pc }}>PRIORIDAD {i.p.toUpperCase()}</span>
+                      <span style={{ fontSize: 11.5, color: K.gris }}>{i.seccion}</span>
+                    </div>
+                    <div style={{ fontSize: 13.5, color: K.carbon, marginTop: 6, lineHeight: 1.45 }}>{i.t}</div>
+                    <div style={{ fontSize: 11.5, color: K.azul, marginTop: 4 }}>📖 {i.f || '—'}</div>
+                    {i.o && <div style={{ fontSize: 12, color: K.gris, marginTop: 4 }}>Obs. del auditor: {i.o}</div>}
+
+                    <label style={S.lbl}>Acción correctiva</label>
+                    <textarea
+                      style={S.textarea}
+                      value={i.accion}
+                      disabled={carga !== 'ok'}
+                      placeholder={i.accionCatalogo ? '' : 'Sin acción en el catálogo para este reactivo. Escríbela aquí.'}
+                      onChange={(e) => editar(i.id, 'accion', e.target.value)}
+                    />
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                      <label style={{ ...S.lbl, margin: 0 }}>Plazo</label>
+                      <select
+                        style={S.select}
+                        value={i.plazo}
+                        disabled={carga !== 'ok'}
+                        onChange={(e) => editar(i.id, 'plazo', e.target.value)}
+                      >
+                        {PLAZOS.map((p) => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                      {editada && i.accionCatalogo && (
+                        <button style={S.linkBtn} onClick={() => restaurar(i.id)}>↺ Restaurar acción del catálogo</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -480,6 +589,7 @@ const DF = ({ l, v, full }) => (
 const S = {
   back: { background: 'none', border: 'none', color: K.azul, fontWeight: 600, fontSize: 14, cursor: 'pointer' },
   btnPrimary: { background: `linear-gradient(120deg, ${K.verde}, ${K.verdeCl})`, color: '#fff', border: 'none', padding: '11px 22px', borderRadius: 10, fontWeight: 700, fontSize: 14.5, cursor: 'pointer' },
+  btnSec: { background: '#fff', color: K.azul, border: `1.5px solid ${K.azul}`, padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer' },
   doc: { background: '#fff', borderRadius: 14, padding: '28px 32px', boxShadow: '0 4px 24px rgba(0,0,0,.08)', maxWidth: 880, margin: '0 auto' },
   docHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' },
   grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginBottom: 4 },
@@ -492,4 +602,10 @@ const S = {
   firmas: { display: 'flex', gap: 40, marginTop: 44, justifyContent: 'space-around', flexWrap: 'wrap' },
   firma: { flex: 1, textAlign: 'center', fontSize: 13, color: K.carbon, maxWidth: 280, minWidth: 200 },
   firmaLn: { borderTop: `1.5px solid ${K.carbon}`, marginBottom: 6 },
+  ncCard: { border: '1px solid #E4E0D6', borderLeft: '4px solid', borderRadius: 8, padding: '12px 14px' },
+  lbl: { display: 'block', fontSize: 11, fontWeight: 700, color: K.gris, letterSpacing: 0.3, margin: '10px 0 4px' },
+  textarea: { width: '100%', minHeight: 70, padding: '9px 11px', borderRadius: 8, border: '1.5px solid #DDD8CC', fontSize: 13.5, fontFamily: 'inherit', lineHeight: 1.45, resize: 'vertical', boxSizing: 'border-box', background: '#FCFBF8', color: K.carbon },
+  select: { padding: '7px 10px', borderRadius: 8, border: '1.5px solid #DDD8CC', fontSize: 13.5, background: '#FCFBF8', color: K.carbon },
+  linkBtn: { background: 'none', border: 'none', color: K.azulCl, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', padding: 0 },
+  aviso: { padding: '10px 14px', borderRadius: 8, borderLeft: '4px solid', background: K.arena, fontSize: 12.5, marginBottom: 10 },
 };

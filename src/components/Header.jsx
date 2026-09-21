@@ -147,7 +147,10 @@ export default function Header({ usuario, perfil }) {
             <strong>{usuario?.email}</strong>
           </div>
           {perfil?.rol === 'admin' && (
-            <button onClick={() => navigate('/admin')} style={S.menuBtnAdmin}>Administrar usuarios</button>
+            <>
+              <button onClick={() => { setMenuAbierto(false); navigate('/informes'); }} style={S.menuBtnAdmin}>Informes de hallazgos</button>
+              <button onClick={() => navigate('/admin')} style={S.menuBtnAdmin}>Administrar usuarios</button>
+            </>
           )}
           <button onClick={cerrarSesion} style={S.menuBtn}>Cerrar sesión</button>
         </div>
