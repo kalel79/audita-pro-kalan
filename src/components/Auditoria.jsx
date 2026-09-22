@@ -498,10 +498,12 @@ function Hallazgos({ hallazgos, auditoriaId, onAdd, onDel }) {
   const [grav, setGrav] = useState('media');
   const [foto, setFoto] = useState(null);
   const fileRef = useRef();
+  const galeriaRef = useRef();
   const gravColor = { alta: K.rojo, media: K.amber, baja: K.verde };
 
   const onFile = async (e) => {
     const f = e.target.files[0];
+    e.target.value = '';
     if (!f) return;
     try {
       setFoto(await comprimirImagen(f));
@@ -526,6 +528,7 @@ function Hallazgos({ hallazgos, auditoriaId, onAdd, onDel }) {
     });
     setDesc(''); setGrav('media'); setFoto(null);
     if (fileRef.current) fileRef.current.value = '';
+    if (galeriaRef.current) galeriaRef.current.value = '';
   };
 
   return (
@@ -552,7 +555,13 @@ function Hallazgos({ hallazgos, auditoriaId, onAdd, onDel }) {
           </div>
           <div>
             <label style={S.lbl}>Evidencia fotográfica</label>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFile} style={{ fontSize: 13 }} />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={S.btnGhost} onClick={() => fileRef.current?.click()}>📷 Tomar foto</button>
+              <button type="button" style={S.btnGhost} onClick={() => galeriaRef.current?.click()}>🖼️ Elegir de galería</button>
+            </div>
+            {/* capture fuerza la cámara en móvil; sin él se abre la galería o el explorador de archivos. */}
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFile} style={{ display: 'none' }} />
+            <input ref={galeriaRef} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
           </div>
           {foto && (
             <img
