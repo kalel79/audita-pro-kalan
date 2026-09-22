@@ -30,8 +30,8 @@ export function conclusionInforme(hallazgos) {
 }
 
 /** Informe de hallazgos con evidencia fotográfica (sólo admin). */
-export function htmlInforme({ aud, hallazgos, revisor, origen }) {
-  const codigo = codigoDocumento('IN', aud);
+export function htmlInforme({ aud, hallazgos, revisor, origen, sinIdentidad = false }) {
+  const codigo = codigoDocumento('IN', aud, sinIdentidad);
   const lista = ordenarHallazgos(hallazgos);
   const { texto, critico } = conclusionInforme(hallazgos);
   const t = critico ? SEM.crit : { tx: KC.azulOsc, bg: KC.azulClaro };
@@ -76,8 +76,8 @@ export function htmlInforme({ aud, hallazgos, revisor, origen }) {
 
   <div class="cierre">
     <div class="firmas">
-      <div><div class="ln"></div><div class="cargo">Elaboró</div><div>${esc(aud.auditor || '')}</div><div class="suave">Auditor · Kalan Consulting</div></div>
-      <div><div class="ln"></div><div class="cargo">Revisó</div><div>${esc(revisor || '')}</div><div class="suave">Kalan Consulting, S.A. de C.V.</div></div>
+      <div><div class="ln"></div><div class="cargo">Elaboró</div><div>${esc(aud.auditor || '')}</div><div class="suave">Auditor${sinIdentidad ? '' : ' · Kalan Consulting'}</div></div>
+      <div><div class="ln"></div><div class="cargo">Revisó</div><div>${esc(revisor || '')}</div><div class="suave">${sinIdentidad ? 'Responsable de la evaluación' : 'Kalan Consulting, S.A. de C.V.'}</div></div>
     </div>
     <div class="leyenda">Este informe describe las condiciones observadas el día de la visita y no sustituye las resoluciones de la autoridad sanitaria competente (COFEPRIS o comisión estatal).</div>
   </div>`;
@@ -89,6 +89,7 @@ export function htmlInforme({ aud, hallazgos, revisor, origen }) {
     referencia: `Folio ${aud.folio} · ${fechaLarga(aud.fecha)}`,
     origen,
     cuerpo,
+    sinIdentidad,
     css: `
 .hz { display: grid; grid-template-columns: 58% 1fr; gap: 14px; border: 1px solid ${KC.borde}; border-radius: 6px; padding: 10px; margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid; }
 /* La evidencia se muestra completa, nunca recortada. */

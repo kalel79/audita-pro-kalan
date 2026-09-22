@@ -23,6 +23,9 @@ export default function Reporte({ perfil }) {
   const [ajustes, setAjustes] = useState({});
   const [carga, setCarga] = useState('cargando'); // cargando | ok | error
   const [guardado, setGuardado] = useState('ok'); // ok | pendiente | error
+  // Documento neutro para el cliente que lo pide sin marca. Arranca apagado:
+  // lo normal es entregar con la identidad de Kalan.
+  const [sinIdentidad, setSinIdentidad] = useState(false);
   const ajustesRef = useRef({});
   const timerRef = useRef(null);
   const pendienteRef = useRef(false);
@@ -155,6 +158,7 @@ export default function Reporte({ perfil }) {
       aud, stats, d, porSeccion, noCumplidos, anexos, hallazgos,
       revisor: (perfil?.nombre || '').trim(),
       origen: window.location.origin,
+      sinIdentidad,
     });
 
     const w = window.open('', '_blank');
@@ -169,6 +173,10 @@ export default function Reporte({ perfil }) {
       <div className="no-print" style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <button style={S.back} onClick={() => navigate(`/auditoria/${id}`)}>← Volver a la auditoría</button>
         <button style={{ ...S.btnSec, marginLeft: 'auto' }} onClick={() => navigate(`/informe/${id}`)}>📸 Informe de hallazgos</button>
+        <label style={S.sinId} title="Genera el dictamen sin logotipo, sin razón social, sin datos de contacto y en grises.">
+          <input type="checkbox" checked={sinIdentidad} onChange={(e) => setSinIdentidad(e.target.checked)} />
+          Sin identidad Kalan
+        </label>
         <button style={S.btnPrimary} onClick={imprimir}>⤓ Descargar / Imprimir dictamen</button>
       </div>
 
@@ -419,6 +427,7 @@ const S = {
   back: { background: 'none', border: 'none', color: K.azul, fontWeight: 600, fontSize: 14, cursor: 'pointer' },
   btnPrimary: { background: `linear-gradient(120deg, ${K.verde}, ${K.verdeCl})`, color: '#fff', border: 'none', padding: '11px 22px', borderRadius: 10, fontWeight: 700, fontSize: 14.5, cursor: 'pointer' },
   btnSec: { background: '#fff', color: K.azul, border: `1.5px solid ${K.azul}`, padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer' },
+  sinId: { display: 'flex', alignItems: 'center', gap: 7, color: K.gris, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', userSelect: 'none' },
   doc: { background: '#fff', borderRadius: 14, padding: '28px 32px', boxShadow: '0 4px 24px rgba(0,0,0,.08)', maxWidth: 880, margin: '0 auto' },
   docHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' },
   grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginBottom: 4 },

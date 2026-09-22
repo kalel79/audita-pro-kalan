@@ -12,9 +12,10 @@ const badge = (texto, tono) => `<span class="badge" style="color:${SEM[tono].tx}
  * datos: { aud, stats, d, porSeccion, noCumplidos, anexos, hallazgos, revisor, origen }
  *  - noCumplidos: filas de filasCorrectivas() (no cumple y en proceso, con acción y plazo)
  *  - hallazgos: con `foto` (DataURL) cuando esté disponible en el dispositivo
+ *  - sinIdentidad: documento neutro, para el cliente que lo pide sin marca
  */
-export function htmlDictamen({ aud, stats, d, porSeccion, noCumplidos, anexos, hallazgos, revisor, origen }) {
-  const codigo = codigoDocumento('DT', aud);
+export function htmlDictamen({ aud, stats, d, porSeccion, noCumplidos, anexos, hallazgos, revisor, origen, sinIdentidad = false }) {
+  const codigo = codigoDocumento('DT', aud, sinIdentidad);
   const tono = stats.total === 0 ? 'neutro' : semaforo(stats.pct);
   const color = SEM[tono].tx;
   const nNo = noCumplidos.filter((i) => i.e === 'no').length;
@@ -79,7 +80,7 @@ export function htmlDictamen({ aud, stats, d, porSeccion, noCumplidos, anexos, h
   const acciones = `${sec('No conformidades y acciones correctivas')}
   ${noCumplidos.length === 0
     ? `<div class="caja" style="border-left-color:${SEM.ok.tx};background:${SEM.ok.bg};"><div class="t" style="color:${SEM.ok.tx};">Sin no conformidades</div><p>No se identificaron reactivos en incumplimiento ni en proceso.</p></div>`
-    : `<p class="intro">Se enlistan los reactivos que no cumplen o están en proceso, con la acción correctiva que Kalan Consulting recomienda y el plazo sugerido para atenderla.</p>
+    : `<p class="intro">Se enlistan los reactivos que no cumplen o están en proceso, con la acción correctiva ${sinIdentidad ? 'recomendada' : 'que Kalan Consulting recomienda'} y el plazo sugerido para atenderla.</p>
   <table class="t acc">
     <colgroup><col style="width:5%"><col style="width:39%"><col style="width:14%"><col style="width:42%"></colgroup>
     <thead><tr><th class="c">#</th><th>Reactivo y fundamento</th><th class="c">Estado y plazo</th><th>Acción correctiva</th></tr></thead>
@@ -134,11 +135,11 @@ export function htmlDictamen({ aud, stats, d, porSeccion, noCumplidos, anexos, h
   <p>Cada reactivo se califica como Cumple (1.0), En proceso (0.5) o No cumple (0); los reactivos que no aplican se excluyen del cálculo. El cumplimiento ponderado es la suma de las calificaciones entre el número de reactivos evaluados. Semáforo: 90 % o más, favorable; de 70 % a 89 %, atención prioritaria; menos de 70 %, riesgo sanitario alto. Un reactivo de prioridad alta en incumplimiento se considera crítico.</p>`;
 
   const firmas = `<div class="firmas">
-    <div><div class="ln"></div><div class="cargo">Elaboró</div><div>${esc(aud.auditor || '')}</div><div class="suave">Auditor · Kalan Consulting</div></div>
-    <div><div class="ln"></div><div class="cargo">Revisó y emite</div><div>${esc(revisor || '')}</div><div class="suave">Kalan Consulting, S.A. de C.V.</div></div>
+    <div><div class="ln"></div><div class="cargo">Elaboró</div><div>${esc(aud.auditor || '')}</div><div class="suave">Auditor${sinIdentidad ? '' : ' · Kalan Consulting'}</div></div>
+    <div><div class="ln"></div><div class="cargo">Revisó y emite</div><div>${esc(revisor || '')}</div><div class="suave">${sinIdentidad ? 'Responsable de la evaluación' : 'Kalan Consulting, S.A. de C.V.'}</div></div>
     <div><div class="ln"></div><div class="cargo">Recibe</div><div>${esc(aud.responsable || '')}</div><div class="suave">Responsable del establecimiento</div></div>
   </div>
-  <div class="leyenda">Este dictamen expresa la opinión técnica de Kalan Consulting, S.A. de C.V. sobre las condiciones observadas el día de la visita, con base en la normativa citada. No sustituye las resoluciones de la autoridad sanitaria competente (COFEPRIS o comisión estatal) ni garantiza el sentido de una verificación oficial.</div></div>`;
+  <div class="leyenda">Este dictamen expresa la opinión técnica ${sinIdentidad ? 'de quien lo emite' : 'de Kalan Consulting, S.A. de C.V.'} sobre las condiciones observadas el día de la visita, con base en la normativa citada. No sustituye las resoluciones de la autoridad sanitaria competente (COFEPRIS o comisión estatal) ni garantiza el sentido de una verificación oficial.</div></div>`;
 
   const cuerpo = [portada, datos, resultado, areas, acciones, anexosHTML, evidencia, metodologia, firmas].join('\n');
 
@@ -150,6 +151,7 @@ export function htmlDictamen({ aud, stats, d, porSeccion, noCumplidos, anexos, h
     origen,
     cuerpo,
     css: CSS_DICTAMEN,
+    sinIdentidad,
   });
 }
 

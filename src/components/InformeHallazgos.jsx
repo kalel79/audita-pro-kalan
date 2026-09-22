@@ -14,6 +14,9 @@ export default function InformeHallazgos({ usuario, perfil }) {
   const [aud, setAud] = useState(null);
   const [hallazgos, setHallazgos] = useState([]);
   const [fotosListas, setFotosListas] = useState(false);
+  // Documento neutro para el cliente que lo pide sin marca. Arranca apagado:
+  // lo normal es entregar con la identidad de Kalan.
+  const [sinIdentidad, setSinIdentidad] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -45,7 +48,7 @@ export default function InformeHallazgos({ usuario, perfil }) {
     const w = window.open('', '_blank');
     if (!w) { alert('Permite ventanas emergentes para generar el informe.'); return; }
     w.document.open();
-    w.document.write(htmlInforme({ aud, hallazgos, revisor, origen: window.location.origin }));
+    w.document.write(htmlInforme({ aud, hallazgos, revisor, origen: window.location.origin, sinIdentidad }));
     w.document.close();
   };
 
@@ -53,7 +56,11 @@ export default function InformeHallazgos({ usuario, perfil }) {
     <div className="apk-fade">
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <button style={S.back} onClick={() => navigate(`/reporte/${id}`)}>← Volver al dictamen</button>
-        <button style={{ ...S.btn, marginLeft: 'auto' }} onClick={exportar} disabled={!fotosListas}>
+        <label style={{ ...S.sinId, marginLeft: 'auto' }} title="Genera el informe sin logotipo, sin razón social, sin datos de contacto y en grises.">
+          <input type="checkbox" checked={sinIdentidad} onChange={(e) => setSinIdentidad(e.target.checked)} />
+          Sin identidad Kalan
+        </label>
+        <button style={S.btn} onClick={exportar} disabled={!fotosListas}>
           {fotosListas ? '⤓ Descargar / Imprimir informe' : 'Preparando fotos…'}
         </button>
       </div>
@@ -151,6 +158,7 @@ export function InformesLista() {
 const S = {
   back: { background: 'none', border: 'none', color: KC.azulOsc, fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '4px 0' },
   btn: { background: KC.azul, color: '#fff', border: 'none', padding: '11px 20px', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer' },
+  sinId: { display: 'flex', alignItems: 'center', gap: 7, color: KC.gris, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', userSelect: 'none' },
   doc: { background: '#fff', borderRadius: 12, padding: '26px 28px', boxShadow: '0 4px 24px rgba(23,85,143,.1)', maxWidth: 880, margin: '0 auto', fontFamily: 'Inter, "Segoe UI", Calibri, Arial, sans-serif', color: KC.gris },
   enc: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingBottom: 10, borderBottom: `1.5px solid ${KC.verde}` },
   mono: { fontFamily: 'Consolas, monospace', fontSize: 11.5, color: KC.azulOsc },

@@ -24,6 +24,33 @@ export const SEM = {
 
 export const CONTACTO = 'Kalan Consulting, S.A. de C.V. · Tlaxcala, Tlaxcala, México · Tel. 246 126 4733 · 55 3597 1981 · kalanconsultoria.com';
 
+/**
+ * Versión neutra de la paleta, para el cliente que pide el documento sin
+ * identidad Kalan. Sólo se cambian los colores de marca (azul y verde); los
+ * del semáforo (SEM) no se tocan porque significan algo: cumple, atención,
+ * crítico. Se sustituyen por código hexadecimal sobre el HTML ya armado
+ * porque muchos colores viajan en atributos `style`, donde una regla CSS de
+ * más no los alcanzaría.
+ */
+const NEUTRO = {
+  '#2682D9': '#46505A', // azul
+  '#3CD482': '#9BA4AC', // verde
+  '#17558F': '#2E353C', // azul oscuro
+  '#1F9E5F': '#5A636B', // verde oscuro
+  '#8FA6BC': '#8B9096', // gris suave
+  '#E4F0FC': '#EFF1F3', // azul claro
+  '#F5F9FD': '#F6F7F8', // gris claro
+  '#E3ECF5': '#E3E5E8', // borde
+  '#BBD8F2': '#CBD0D5', // texto sobre la portada
+};
+
+export function neutralizarColores(html) {
+  return Object.entries(NEUTRO).reduce(
+    (t, [marca, gris]) => t.replace(new RegExp(marca, 'gi'), gris),
+    html,
+  );
+}
+
 export const esc = (s) => String(s == null ? '' : s)
   .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -33,14 +60,14 @@ export function semaforo(pct, evaluados = 1) {
   return pct >= 90 ? 'ok' : pct >= 70 ? 'warn' : 'crit';
 }
 
-/** KC-XX-AAAA-MMDD-CLIENTE (manual de marca). */
-export function codigoDocumento(tipo, aud) {
+/** KC-XX-AAAA-MMDD-CLIENTE (manual de marca); sin identidad va sin el «KC-». */
+export function codigoDocumento(tipo, aud, sinIdentidad = false) {
   const [a = '0000', m = '00', d = '00'] = String(aud.fecha || '').split('-');
   const cliente = String(aud.establecimiento || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/)
     .filter((w) => w.length > 2).slice(0, 3).join('').toUpperCase().slice(0, 16) || 'CLIENTE';
-  return `KC-${tipo}-${a}-${m}${d}-${cliente}`;
+  return `${sinIdentidad ? '' : 'KC-'}${tipo}-${a}-${m}${d}-${cliente}`;
 }
 
 export function fechaLarga(iso) {
@@ -158,13 +185,23 @@ table.ficha td.k { width: 17%; background: ${KC.grisClaro}; color: ${KC.azulOsc}
 /**
  * Envuelve el cuerpo de un documento con encabezado, pie y estilos Kalan.
  * `origen` es la base de URL de la app (de ahí sale el logotipo).
+ *
+ * Con `sinIdentidad` se entrega el mismo documento sin marca: se van el
+ * logotipo, la razón social, el lema, el pie de contacto y el #KalanProtege.
+ * El espacio que ocupaban sigue reservado, así que la caja del texto no se
+ * mueve y nada queda encimado.
  */
-export function documentoHTML({ tituloVentana, tipoDocumento, codigo, referencia = '', origen, cuerpo, css = '' }) {
-  const enc = `<div class="enc"><img src="${esc(origen)}/logo-kalan.png" alt="Kalan Consulting"/><div class="sep"></div>
-      <div class="firma-kc"><div class="rs">Kalan Consulting, S.A. de C.V.</div><div class="lema">Cumplimiento regulatorio y gestión de riesgo sanitario</div></div>
+export function documentoHTML({ tituloVentana, tipoDocumento, codigo, referencia = '', origen, cuerpo, css = '', sinIdentidad = false }) {
+  const firma = sinIdentidad
+    ? '<div class="firma-kc"></div>'
+    : `<img src="${esc(origen)}/logo-kalan.png" alt="Kalan Consulting"/><div class="sep"></div>
+      <div class="firma-kc"><div class="rs">Kalan Consulting, S.A. de C.V.</div><div class="lema">Cumplimiento regulatorio y gestión de riesgo sanitario</div></div>`;
+  const enc = `<div class="enc">${firma}
       <div class="doc"><div class="t">${esc(tipoDocumento)}</div><div class="c">${esc(codigo)}</div>${referencia ? `<div class="f">${esc(referencia)}</div>` : ''}</div></div>`;
-  const pie = `<div class="pie"><div>${esc(CONTACTO)}</div><div class="l2"><span class="c">${esc(codigo)}</span><span class="h">#KalanProtege</span></div></div>`;
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  const pie = sinIdentidad
+    ? `<div class="pie"><div class="l2"><span class="c">${esc(codigo)}</span></div></div>`
+    : `<div class="pie"><div>${esc(CONTACTO)}</div><div class="l2"><span class="c">${esc(codigo)}</span><span class="h">#KalanProtege</span></div></div>`;
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(tituloVentana)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -182,4 +219,5 @@ export function documentoHTML({ tituloVentana, tipoDocumento, codigo, referencia
   </table>
   <div class="pie-pantalla">${pie}</div>
 </div></body></html>`;
+  return sinIdentidad ? neutralizarColores(html) : html;
 }
