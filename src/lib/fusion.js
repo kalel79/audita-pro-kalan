@@ -32,9 +32,16 @@ export function fusionarChecklist(preferida, otra) {
     const o = otraPorSec.get(sec.s);
     if (!o) return sec;
     const otrosItems = new Map((o.i || []).map((it) => [it.id, it]));
+    // Respaldo por texto: si se renumeran los ids de un giro, una copia hecha
+    // con los ids anteriores sigue encontrando su reactivo.
+    const otrosPorTexto = new Map((o.i || []).map((it) => [it.t, it]));
+    const par = (it) => {
+      const porId = otrosItems.get(it.id);
+      return porId && porId.t === it.t ? porId : otrosPorTexto.get(it.t) || porId;
+    };
     return {
       ...sec,
-      i: (sec.i || []).map((it) => fusionarItem(it, otrosItems.get(it.id))),
+      i: (sec.i || []).map((it) => fusionarItem(it, par(it))),
       ...(sec.anexo || o.anexo ? { anexo: fusionarAnexo(sec.anexo, o.anexo) } : {}),
     };
   });
