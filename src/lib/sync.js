@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { db, confirmarAuditoriaSubida, aplicarDescarga, quitarAusentesDelServidor, aplicarHallazgosDelServidor } from './db';
 import { subirFotoHallazgo, asegurarFotoLocal, borrarFotos, rutasFotosDeAuditoria } from './fotos';
-import { fusionarAuditoria, mismaVersion } from './fusion';
+import { fusionarAuditoria, mismaVersion, normalizarIds } from './fusion';
 import { calcCumplimiento, dictamen } from './utils';
 
 const PAGINA = 1000;
@@ -132,7 +132,7 @@ async function ejecutar(onProgress) {
           // auditor, sigue siendo de ese auditor.
           auditor_id: aSubir.auditor_id || user.id,
           cerrada: !!aSubir.cerrada,
-          checklist: aSubir.checklist,
+          checklist: normalizarIds(aSubir.giro, aSubir.checklist),
           pct_cumplimiento: aSubir.pct_cumplimiento || 0,
           total_criterios: aSubir.total_criterios || 0,
           criticos_fallidos: aSubir.criticos_fallidos || 0,

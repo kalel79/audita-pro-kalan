@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { db } from '../lib/db';
+import { normalizarIds } from '../lib/fusion';
 import { asegurarFotoLocal } from '../lib/fotos';
 import { PLAZOS, cargarCatalogo, cargarAjustes, guardarAjustes, filasCorrectivas } from '../lib/dictamen';
 import Resumen from './Resumen';
@@ -97,7 +98,7 @@ export default function Reporte({ perfil }) {
     (async () => {
       const a = await db.auditorias.get(id);
       if (!a) { navigate('/'); return; }
-      setAud(a);
+      setAud({ ...a, checklist: normalizarIds(a.giro, a.checklist) });
       const hs = await db.hallazgos.where('auditoria_id').equals(id).toArray();
       setHallazgos(hs);
       // El dictamen exportado lleva las fotos incrustadas, así que se traen

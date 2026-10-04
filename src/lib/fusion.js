@@ -11,6 +11,36 @@
  *  - Las filas de los anexos se unen por su _id.
  */
 
+import CHECKLISTS from '../data/checklists.json';
+
+/**
+ * Corrige los ids de una copia hecha cuando su giro repetía ids entre
+ * secciones (Rastros Avícolas antes de 2026-10-04). El dictamen y el catálogo
+ * de acciones correctivas se indexan por id, así que cada reactivo toma el id
+ * del catálogo actual con el mismo texto. Sólo actúa si la copia tiene ids
+ * repetidos y el resultado queda sin repetidos; si no, la deja igual.
+ */
+export function normalizarIds(giro, checklist) {
+  const items = (checklist || []).flatMap((s) => s.i || []);
+  if (new Set(items.map((it) => it.id)).size === items.length) return checklist;
+  const cat = CHECKLISTS[giro];
+  if (!cat) return checklist;
+  const idPorTexto = new Map();
+  const repetidos = new Set();
+  cat.sec.forEach((s) => s.i.forEach((it) => {
+    if (idPorTexto.has(it.t)) repetidos.add(it.t);
+    idPorTexto.set(it.t, it.id);
+  }));
+  const nuevo = checklist.map((s) => ({
+    ...s,
+    i: (s.i || []).map((it) => (
+      idPorTexto.has(it.t) && !repetidos.has(it.t) ? { ...it, id: idPorTexto.get(it.t) } : it
+    )),
+  }));
+  const ids = nuevo.flatMap((s) => s.i.map((it) => it.id));
+  return new Set(ids).size === ids.length ? nuevo : checklist;
+}
+
 const CAMPOS_TEXTO = [
   'establecimiento', 'responsable', 'domicilio', 'categoria', 'giro',
   'tramite', 'normativa', 'fecha', 'auditor', 'folio',
